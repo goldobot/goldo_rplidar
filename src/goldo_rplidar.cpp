@@ -1,11 +1,9 @@
+#include <cstddef>
 #include "rplidar.h"
 #include <zmq.h>
-
 #include <cmath>
-
 #include <memory>
 #include <string>
-
 #include <iostream>
 
 using namespace rp::standalone::rplidar;
