@@ -96,6 +96,7 @@ public:
     Point m_points[c_nb_points];
     
     float m_cfg_dist_limits[3]{0.1f,0.3f,1.0f}; // too far ( in robot), near, far
+    bool m_enable_autotest{false};
 };
 
 RPLidar::RPLidar() :
@@ -139,7 +140,7 @@ bool RPLidar::connectLidar(const std::string& port_name)
             std::cout << "firmware version: " << (int)firmware_version_major << "." << (int)firmware_version_minor << "\n";
         } else
         {
-            std::cout << "failed to get device info\n";
+            std::cout << "failed to get device info, error: " << res << "\n";
             return false;
         }        
     };
@@ -168,6 +169,18 @@ void RPLidar::stopMotor()
   m_rplidar_driver->stopMotor();
 };
 
+enum class MessageIdIn: uint8_t
+{
+    Unknown=0,
+    StartMotor,
+    StopMotor,
+    SetThetaOffset,
+    SetRobotPose,
+    SetDistanceLimits,
+    SetEnableAutotest
+};
+    
+
 void RPLidar::checkSockets()
 {  
   uint32_t events;
@@ -179,26 +192,32 @@ void RPLidar::checkSockets()
 
   while(events & ZMQ_POLLIN)
   {   
-    uint8_t command;
-    auto bytes_read = zmq_recv(m_sub_socket, &command , 1, 0);
+    MessageIdIn command;
+    uint8_t val{0};
+    auto bytes_read = zmq_recv(m_sub_socket, (uint8_t*)&command , 1, 0);
     switch(command)
     {
-        case 1:
+        case MessageIdIn::StartMotor:
             startMotor();
             zmq_recv(m_sub_socket, nullptr , 0, 0);
             break;
-        case 2:
+        case MessageIdIn::StopMotor:
             stopMotor();
             zmq_recv(m_sub_socket, nullptr , 0, 0);
             break;
-        case 3:
+        case MessageIdIn::SetThetaOffset:
             zmq_recv(m_sub_socket, &m_theta_offset , sizeof(m_theta_offset), 0);
             break;
-        case 4:
+        case MessageIdIn::SetRobotPose:
             zmq_recv(m_sub_socket, &m_pose_x , 12, 0);
             break;
-        case 5:
+        case MessageIdIn::SetDistanceLimits:
             zmq_recv(m_sub_socket, &m_cfg_dist_limits , 12, 0);
+            break;
+        case MessageIdIn::SetEnableAutotest:
+            zmq_recv(m_sub_socket, &val , 1, 0);
+            m_enable_autotest = val> 0;
+            std::cout << "set autotest enable: " << m_enable_autotest << "\n";
             break;
         default:
             zmq_recv(m_sub_socket, nullptr , 0, 0);
@@ -224,12 +243,14 @@ void RPLidar::checkLidar()
       }
       checkNearAdversary();
       sendScan();
-#if 0 /* FIXME : TODO : WIP */
-      trackAdversaries();
-#else /* DEBUG */
-      sendAutotest();
-#endif
-    };    
+      if(m_enable_autotest)
+      {
+        sendAutotest();
+      } else 
+      {    
+        trackAdversaries();
+      }
+    }
 };
 
 int RPLidar::pointZone(float x, float y)
