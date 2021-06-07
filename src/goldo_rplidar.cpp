@@ -97,6 +97,7 @@ public:
     
     float m_cfg_dist_limits[3]{0.1f,0.3f,1.0f}; // too far ( in robot), near, far
     bool m_enable_autotest{false};
+    bool m_enable_send_scan{false};
 };
 
 RPLidar::RPLidar() :
@@ -177,7 +178,8 @@ enum class MessageIdIn: uint8_t
     SetThetaOffset,
     SetRobotPose,
     SetDistanceLimits,
-    SetEnableAutotest
+    SetEnableAutotest,
+    SetEnableSendScan
 };
     
 
@@ -219,6 +221,11 @@ void RPLidar::checkSockets()
             m_enable_autotest = val> 0;
             std::cout << "set autotest enable: " << m_enable_autotest << "\n";
             break;
+        case MessageIdIn::SetEnableSendScan:
+            zmq_recv(m_sub_socket, &val , 1, 0);
+            m_enable_send_scan = val> 0;
+            std::cout << "set send scan enable: " << m_enable_send_scan << "\n";
+            break;
         default:
             zmq_recv(m_sub_socket, nullptr , 0, 0);
     };
@@ -242,7 +249,10 @@ void RPLidar::checkLidar()
         m_points[i].y = rho * sinf(theta + m_pose_yaw) + m_pose_y;        
       }
       checkNearAdversary();
-      sendScan();
+      if(m_enable_send_scan)
+      {
+          sendScan();
+      }
       if(m_enable_autotest)
       {
         sendAutotest();
@@ -406,7 +416,7 @@ void RPLidar::sendAutotest()
 
   uint8_t type = 2;
   zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
-  zmq_send(m_pub_socket, &my_message, sizeof(my_message), ZMQ_SNDMORE );
+  zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
 
   usleep(10000);
 };
@@ -434,7 +444,7 @@ void RPLidar::sendLidarTracks()
 
       uint8_t type = 2;
       zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
-      zmq_send(m_pub_socket, &my_message, sizeof(my_message), ZMQ_SNDMORE );
+      zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
     }
   }
 };
