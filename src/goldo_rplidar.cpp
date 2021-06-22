@@ -6,7 +6,12 @@
 #include <string>
 #include <iostream>
 
+#include "../libs/goldo_lidar_detect/include/robot_detection_info.hpp"
+
 using namespace rp::standalone::rplidar;
+#if 1 /* FIXME : DEBUG : GOLDO */
+using namespace goldobot;
+#endif
 
 RPlidarDriver* g_driver = nullptr;
 
@@ -55,6 +60,12 @@ public:
     void sendScan();
     
     void initZmq();
+
+#if 1 /* FIXME : DEBUG : GOLDO */
+    detected_robot_info_t m_autotest_obst;
+    void initAutotest();
+    void sendAutotest();
+#endif
     
     static constexpr float c_theta_factor {-3.141592653589793f * 0.5f / (1 << 14)};
     static constexpr float c_rho_factor{(1e-3f / 4.0f)};
@@ -207,6 +218,9 @@ void RPLidar::checkLidar()
       }
       checkAdversary();
       sendScan();
+#if 1 /* FIXME : DEBUG : GOLDO */
+      sendAutotest();
+#endif
     };    
 };
 
@@ -292,6 +306,58 @@ void RPLidar::sendScan()
     
 };
 
+#if 1 /* FIXME : DEBUG : GOLDO */
+void RPLidar::initAutotest()
+{
+  struct timespec my_tp;
+  clock_gettime(1, &my_tp);
+  int my_thread_time_ms = my_tp.tv_sec*1000 + my_tp.tv_nsec/1000000;
+
+  m_autotest_obst.timestamp_ms = my_thread_time_ms;
+  m_autotest_obst.id = 0;
+  m_autotest_obst.x_mm = 100.0;
+  m_autotest_obst.y_mm = 0.0;
+  m_autotest_obst.vx_mm_sec = 40.0;
+  m_autotest_obst.vy_mm_sec = 0.0;
+  m_autotest_obst.ax_mm_sec_2 = 0.0;
+  m_autotest_obst.ay_mm_sec_2 = 0.0;
+  m_autotest_obst.detect_quality = 20;
+};
+
+void RPLidar::sendAutotest()
+{
+  struct timespec my_tp;
+  clock_gettime(1, &my_tp);
+  int my_thread_time_ms = my_tp.tv_sec*1000 + my_tp.tv_nsec/1000000;
+  int delta_t_ms = my_thread_time_ms - m_autotest_obst.timestamp_ms;
+  double delta_t_s = 0.001*delta_t_ms;
+
+  m_autotest_obst.timestamp_ms = my_thread_time_ms;
+  m_autotest_obst.x_mm = m_autotest_obst.x_mm + delta_t_s*m_autotest_obst.vx_mm_sec;
+
+  if (m_autotest_obst.x_mm>1200.0)
+  {
+    m_autotest_obst.vx_mm_sec = 0.0;
+  }
+
+  robot_detection_msg_t my_message;
+  my_message.timestamp_ms   = m_autotest_obst.timestamp_ms;
+  my_message.id             = m_autotest_obst.id;
+  my_message.x_mm_X4        = m_autotest_obst.x_mm * 4.0;
+  my_message.y_mm_X4        = m_autotest_obst.y_mm * 4.0;
+  my_message.vx_mm_sec      = m_autotest_obst.vx_mm_sec;
+  my_message.vy_mm_sec      = m_autotest_obst.vy_mm_sec;
+  my_message.ax_mm_sec_2    = m_autotest_obst.ax_mm_sec_2;
+  my_message.ay_mm_sec_2    = m_autotest_obst.ay_mm_sec_2;
+  my_message.detect_quality = m_autotest_obst.detect_quality;
+
+  uint8_t type = 2;
+  zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
+  zmq_send(m_pub_socket, &my_message, sizeof(my_message), ZMQ_SNDMORE );
+    
+};
+#endif
+
 RPLidar g_lidar;
 
 int main(int argc, char** argv) {
@@ -300,6 +366,10 @@ int main(int argc, char** argv) {
       return -1;
   }
   g_lidar.initZmq();
+#if 1 /* FIXME : DEBUG : GOLDO */
+  g_lidar.initAutotest();
+#endif
+
   g_lidar.run();
   return 0;
 }
