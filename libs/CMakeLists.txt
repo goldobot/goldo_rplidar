@@ -1,1 +1,2 @@
 add_subdirectory(rplidar_sdk)
+add_subdirectory(goldo_lidar_detect)

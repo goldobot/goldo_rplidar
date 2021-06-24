@@ -25,6 +25,7 @@ add_executable(goldo_rplidar
 ## Specify libraries to link a library or executable target against
 target_link_libraries(goldo_rplidar
   rplidar_sdk
+  goldo_lidar_detect
   ${ZeroMQ_LIBRARY}
   pthread;  
 )
