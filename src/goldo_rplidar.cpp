@@ -58,7 +58,8 @@ public:
     void checkSockets();
     void checkLidar();
     int pointZone(float x, float y);
-    bool checkAdversary();
+    bool checkNearAdversary();
+    void trackAdversaries();
     
     void sendScan();
     
@@ -221,29 +222,10 @@ void RPLidar::checkLidar()
         m_points[i].x = rho * cosf(theta + m_pose_yaw) + m_pose_x;
         m_points[i].y = rho * sinf(theta + m_pose_yaw) + m_pose_y;        
       }
-      checkAdversary();
+      checkNearAdversary();
       sendScan();
 #if 0 /* FIXME : TODO : WIP */
-      struct timespec my_tp;
-      clock_gettime(1, &my_tp);
-      int my_thread_time_ms = my_tp.tv_sec*1000 + my_tp.tv_nsec/1000000;
-      /* reset des slots de detection du tracker d'adversaire */ 
-      LidarDetect::instance().clearSlots();
-      /* envoi des plots lidar au tracker d'adversaire (+filtrage geometrique) */ 
-      for (unsigned i = 0; i < count; i++) {
-        float x = m_points[i].x;
-        float y = m_points[i].y;
-        float R = sqrt (x*x+y*y);
-        if ((x >  0.1) && (x <  1.9) && 
-            (y > -1.4) && (y <  1.4) && 
-            (R > 0.1) ) { /* si a l'interieur du terrain et a l'exterieur du robot */
-          LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
-        }
-      }
-      /* detection des clusters de plots representant potentiellement un adversaire */ 
-      LidarDetect::instance().updateDetection();
-      /* envoi des tracks lidar sur zmq */ 
-      sendLidarTracks();
+      trackAdversaries();
 #else /* DEBUG */
       sendAutotest();
 #endif
@@ -288,7 +270,7 @@ int RPLidar::pointZone(float x, float y)
     };    
 };
 
-bool RPLidar::checkAdversary()
+bool RPLidar::checkNearAdversary()
 {
     int counts[8] = {0,0,0,0,0,0,0,0};
     uint8_t detect[8];
@@ -310,6 +292,30 @@ bool RPLidar::checkAdversary()
     zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
     zmq_send(m_pub_socket, &detect, 8, 0);
     return true;
+}
+
+void RPLidar::trackAdversaries()
+{
+  struct timespec my_tp;
+  clock_gettime(1, &my_tp);
+  int my_thread_time_ms = my_tp.tv_sec*1000 + my_tp.tv_nsec/1000000;
+  /* reset des slots de detection du tracker d'adversaire */ 
+  LidarDetect::instance().clearSlots();
+  /* envoi des plots lidar au tracker d'adversaire (+filtrage geometrique) */ 
+  for (unsigned i = 0; i < m_count; i++) {
+    float x = m_points[i].x;
+    float y = m_points[i].y;
+    float R = sqrt (x*x+y*y);
+    if ((x >  0.1) && (x <  1.9) && 
+        (y > -1.4) && (y <  1.4) && 
+        (R > 0.1) ) { /* si a l'interieur du terrain et a l'exterieur du robot */
+      LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
+    }
+  }
+  /* detection des clusters de plots representant potentiellement un adversaire */ 
+  LidarDetect::instance().updateDetection();
+  /* envoi des tracks lidar a goldo_main */ 
+  sendLidarTracks();
 }
 
 void RPLidar::sendScan()
