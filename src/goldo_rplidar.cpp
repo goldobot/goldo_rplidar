@@ -241,12 +241,18 @@ void RPLidar::checkLidar()
     if (IS_OK(op_result)) {
       m_rplidar_driver->ascendScanData(m_nodes, count);
       m_count = count;
+      int j = 0;
       for (unsigned i = 0; i < count; i++) {
         double theta = m_nodes[i].angle_z_q14 * c_theta_factor + m_theta_offset;
         double rho = m_nodes[i].dist_mm_q2 * c_rho_factor;        
        
-        m_points[i].x = rho * cosf(theta + m_pose_yaw) + m_pose_x;
-        m_points[i].y = rho * sinf(theta + m_pose_yaw) + m_pose_y;        
+       if(rho >= 0.05)
+       {
+          m_points[j].x = rho * cosf(theta + m_pose_yaw) + m_pose_x;
+          m_points[j].y = rho * sinf(theta + m_pose_yaw) + m_pose_y;
+          j++;          
+       }
+        
       }
       checkNearAdversary();
       if(m_enable_send_scan)
@@ -336,10 +342,9 @@ void RPLidar::trackAdversaries()
   for (unsigned i = 0; i < m_count; i++) {
     float x = m_points[i].x;
     float y = m_points[i].y;
-    float R = sqrt (x*x+y*y);
+    
     if ((x >  0.1) && (x <  1.9) && 
-        (y > -1.4) && (y <  1.4) && 
-        (R > 0.1) ) { /* si a l'interieur du terrain et a l'exterieur du robot */
+        (y > -1.4) && (y <  1.4)) { /* si a l'interieur du terrain */
       LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
     }
   }
