@@ -368,10 +368,27 @@ void LidarDetect::updateDetection()
 #endif
 
   /* FIXME : TODO : improve (quick hack) */
+  for (int i=0; i<MAX_NB_OF_DETECTED_ROBOTS; i++)
+  {
+    if (m_detect_t_0[i].detect_quality < 4)
+    {
+      m_detect_t_0[i].detect_quality = 0;
+      m_detect_t_0[i].x_mm           = 0;
+      m_detect_t_0[i].y_mm           = 0;
+    }
+  }
   if (m_nb_of_send_detect<3)
+  {
     m_detect_t_0[2].detect_quality = 0;
+    m_detect_t_0[2].x_mm           = 0;
+    m_detect_t_0[2].y_mm           = 0;
+  }
   if (m_nb_of_send_detect<2)
+  {
     m_detect_t_0[1].detect_quality = 0;
+    m_detect_t_0[1].x_mm           = 0;
+    m_detect_t_0[1].y_mm           = 0;
+  }
 
   m_detect_lock = true;
   memcpy (m_detect_export, m_detect_t_0, sizeof(m_detect_t_0));

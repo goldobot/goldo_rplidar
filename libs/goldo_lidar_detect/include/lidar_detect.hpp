@@ -55,7 +55,7 @@ namespace goldobot
   private:
     static constexpr int MAX_NB_OF_DETECTION_SLOTS = 400;
     static constexpr int MAX_NB_OF_DETECTED_ROBOTS = 3;
-    static constexpr double OBSTACLE_SIZE_MM = 80.0;
+    static constexpr double OBSTACLE_SIZE_MM = 140.0;
     static constexpr int MAX_NB_OF_CACHED_SAMPLES = 10000;
 
     unsigned int m_quality_threshold = 1;
