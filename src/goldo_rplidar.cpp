@@ -257,7 +257,7 @@ void RPLidar::checkLidar()
       checkNearAdversary();
       if(m_enable_send_scan)
       {
-          sendScan();
+        sendScan();
       }
       if(m_enable_autotest)
       {
@@ -342,9 +342,10 @@ void RPLidar::trackAdversaries()
   for (unsigned i = 0; i < m_count; i++) {
     float x = m_points[i].x;
     float y = m_points[i].y;
-    
-    if ((x >  0.1) && (x <  1.9) && 
-        (y > -1.4) && (y <  1.4)) { /* si a l'interieur du terrain */
+
+    /* FIXME : TODO : limites du terrain en variables de conf.. */
+    if ((x >  0.10) && (x <  2.95) && 
+        (y > -0.95) && (y <  0.95)) { /* si a l'interieur du terrain */
       LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
     }
   }
