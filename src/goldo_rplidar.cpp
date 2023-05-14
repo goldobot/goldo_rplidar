@@ -11,10 +11,25 @@
 #include "robot_detection_info.hpp"
 #include "lidar_detect.hpp"
 
+#include "goldo_gpio.hpp"
+
 using namespace rp::standalone::rplidar;
 #if 1 /* FIXME : DEBUG : GOLDO */
 using namespace goldobot;
 #endif
+
+extern char* rp_shmem;
+
+
+// front near, front far, right near, right far, back near, back far, left near, left far
+#define FRONT_NEAR   0
+#define LEFT_NEAR    1
+#define BACK_NEAR    2
+#define RIGHT_NEAR   3
+#define FRONT_FAR    4
+#define LEFT_FAR     5
+#define BACK_FAR     6
+#define RIGHT_FAR    7
 
 RPlidarDriver* g_driver = nullptr;
 
@@ -39,6 +54,12 @@ struct Point
     float y;
 };
 
+struct PolPoint
+{
+    float rho;
+    float theta;
+};
+
 class RPLidar
 {
 public:
@@ -58,6 +79,7 @@ public:
     void checkSockets();
     void checkLidar();
     int pointZone(float x, float y);
+    int pointZonePolar(float x, float y, float rho, float theta);
     bool checkNearAdversary();
     void trackAdversaries();
     
@@ -94,10 +116,16 @@ public:
     
     size_t m_count{0};
     Point m_points[c_nb_points];
+    PolPoint m_pol_points[c_nb_points];
     
     float m_cfg_dist_limits[3]{0.1f,0.3f,1.0f}; // too far ( in robot), near, far
+
     bool m_enable_autotest{false};
     bool m_enable_send_scan{false};
+
+    bool           m_strat_enable_flag{false};
+    unsigned char  m_strat_curr_cmd{'u'};
+    float          m_strat_speed_val{0.0};
 };
 
 RPLidar::RPLidar() :
@@ -215,6 +243,10 @@ void RPLidar::checkSockets()
             break;
         case MessageIdIn::SetDistanceLimits:
             zmq_recv(m_sub_socket, &m_cfg_dist_limits , 12, 0);
+            std::cout << "MessageIdIn::SetDistanceLimits:\n";
+            std::cout << "  m_cfg_dist_limits[0]="<<m_cfg_dist_limits[0]<<"\n";
+            std::cout << "  m_cfg_dist_limits[1]="<<m_cfg_dist_limits[1]<<"\n";
+            std::cout << "  m_cfg_dist_limits[2]="<<m_cfg_dist_limits[2]<<"\n";
             break;
         case MessageIdIn::SetEnableAutotest:
             zmq_recv(m_sub_socket, &val , 1, 0);
@@ -246,14 +278,30 @@ void RPLidar::checkLidar()
         double theta = m_nodes[i].angle_z_q14 * c_theta_factor + m_theta_offset;
         double rho = m_nodes[i].dist_mm_q2 * c_rho_factor;        
        
-       if(rho >= 0.05)
-       {
+        if(rho >= 0.05)
+        {
           m_points[j].x = rho * cosf(theta + m_pose_yaw) + m_pose_x;
           m_points[j].y = rho * sinf(theta + m_pose_yaw) + m_pose_y;
-          j++;          
-       }
-        
+          m_pol_points[j].rho = rho;
+          m_pol_points[j].theta = theta;
+          j++;
+        }
       }
+
+      //std::cout << "\n";
+
+      m_strat_enable_flag = (rp_shmem[0]!=0x00)?true:false;
+      m_strat_curr_cmd    = rp_shmem[1];
+      m_strat_speed_val   = *((float *)((unsigned char *)&rp_shmem[4]));
+# if 0 /* FIXME : DEBUG */
+      if (fabs(speed_val)>0.000001) {
+        printf ("TEST : rp_shmem = %x\n", rp_shmem);
+        printf ("       enable_flag = %x\n", m_strat_enable_flag);
+        printf ("       curr_cmd    = %c (%x)\n", m_strat_curr_cmd, m_strat_curr_cmd);
+        printf ("       speed_val   = %f\n", m_strat_speed_val);
+      }
+#endif
+
       checkNearAdversary();
       if(m_enable_send_scan)
       {
@@ -269,10 +317,43 @@ void RPLidar::checkLidar()
     }
 };
 
+int RPLidar::pointZonePolar(float x, float y, float rho, float theta)
+{
+    // normalize theta
+    while (theta>M_PI) theta -= M_PI;
+    while (theta<=(-M_PI)) theta += M_PI;
+
+    // exclude points outside
+    if(x < 0.1f || x > 2.9f || y < -0.9f || y > 0.9f)
+    {
+        return -1;
+    };
+
+    if((rho <= m_cfg_dist_limits[0]) || (rho > m_cfg_dist_limits[2]))
+    {
+        return -1;
+    };
+    
+    int quadrant=0;
+
+    if((theta>=(-M_PI/4)) && (theta<=(M_PI/4))) quadrant = 0; // front
+    if((theta<=(-3.0*M_PI/4)) || (theta>=(3.0*M_PI/4))) quadrant = 2; // back
+    if((theta>(M_PI/4)) && (theta<(3.0*M_PI/4))) quadrant = 1; // left
+    if((theta>(-3.0*M_PI/4)) && (theta<(-M_PI/4))) quadrant = 3; // right
+    
+    if(rho <= m_cfg_dist_limits[1])
+    {
+        return quadrant;
+    } else
+    {
+        return quadrant + 4;
+    };    
+};
+
 int RPLidar::pointZone(float x, float y)
 {
     // exclude points outside
-    if(x < 0.1f || x > 1.9f || y < -1.4f || y > 1.4f)
+    if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
     {
         return -1;
     };
@@ -313,18 +394,67 @@ bool RPLidar::checkNearAdversary()
     uint8_t detect[8];
     for(int i=0; i < m_count; i++)
     {
-        auto z = pointZone(m_points[i].x, m_points[i].y);
+        /* FIXME : TODO : remove old code */
+        //auto z = pointZone(m_points[i].x, m_points[i].y);
+        auto z = pointZonePolar(m_points[i].x, m_points[i].y, m_pol_points[i].rho, m_pol_points[i].theta);
         if(z >= 0)
         {
             counts[z]++;
         };
     };
-    
+
     for(int i = 0; i < 8; i++)
     {
-        detect[i] = counts[i] >= 5;
+        detect[i] = counts[i] >= 6;
     };
         
+#if 1 /* FIXME : TODO : improve usage of the GPIO (direct obstacle signaling to the Nucleo)        */
+      /*                temporary hack to improve reaction time after the detection of an obstacle */
+    {
+      goldo_gpio_check_shmem();
+
+      bool adversary_detected = false;
+
+      if ((m_strat_speed_val > 0.05) && (detect[FRONT_NEAR]>0))
+      {
+        adversary_detected = true;
+      }
+      if ((m_strat_speed_val < -0.05) && (detect[BACK_NEAR]>0))
+      {
+        adversary_detected = true;
+      }
+      if ((m_strat_speed_val > 0.5) && (detect[FRONT_FAR]>0))
+      {
+        adversary_detected = true;
+      }
+      if ((m_strat_speed_val < -0.5) && (detect[BACK_FAR]>0))
+      {
+        adversary_detected = true;
+      }
+
+      if (!m_strat_enable_flag)
+      {
+        adversary_detected = false;
+      }
+
+      if (adversary_detected)
+      {
+#if 0 /* FIXME : DEBUG */
+        std::cout << "RPLidar: adversary detected\n";
+        std::cout << "  FN FF BN BF\n";
+        std::cout << "  "<<(int)detect[FRONT_NEAR]<< "  "<<(int)detect[FRONT_FAR]<<"  "<<(int)detect[BACK_NEAR]<<"  "<<(int)detect[BACK_FAR]<<"\n";
+        std::cout << "  T="<<abs_time_ms<<"  x="<<m_pose_x<<"\n";
+#endif
+        goldo_gpio_set();
+      }
+      else
+      {
+        //std::cout << "RPLidar: no obstacle\n";
+        goldo_gpio_clr();
+      }
+    }
+#endif
+
     uint8_t type = 42;
     zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
     zmq_send(m_pub_socket, &detect, 8, 0);
@@ -467,6 +597,8 @@ int main(int argc, char** argv) {
 #if 1 /* FIXME : DEBUG : GOLDO */
   g_lidar.initAutotest();
 #endif
+
+  goldo_gpio_init();
 
   g_lidar.run();
   return 0;

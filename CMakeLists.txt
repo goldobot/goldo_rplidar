@@ -20,6 +20,7 @@ add_subdirectory(libs)
 
 add_executable(goldo_rplidar
   src/goldo_rplidar.cpp
+  src/goldo_gpio.cpp
   )
 
 ## Specify libraries to link a library or executable target against
