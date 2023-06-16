@@ -81,6 +81,7 @@ public:
     int pointZone(float x, float y);
     int pointZonePolar(float x, float y, float rho, float theta);
     bool checkNearAdversary();
+    float getEffectiveDetectionLimit(float az);
     void trackAdversaries();
     
     void sendScan();
@@ -118,7 +119,7 @@ public:
     Point m_points[c_nb_points];
     PolPoint m_pol_points[c_nb_points];
     
-    float m_cfg_dist_limits[3]{0.1f,0.3f,1.0f}; // too far ( in robot), near, far
+    float m_cfg_dist_limits[3]{0.1f,0.3f,0.6f}; // too near (in robot), near, far
 
     bool m_enable_autotest{false};
     bool m_enable_send_scan{false};
@@ -319,6 +320,8 @@ void RPLidar::checkLidar()
 
 int RPLidar::pointZonePolar(float x, float y, float rho, float theta)
 {
+    float detect_dist = getEffectiveDetectionLimit(0.0);
+
     // normalize theta
     while (theta>M_PI) theta -= M_PI;
     while (theta<=(-M_PI)) theta += M_PI;
@@ -329,7 +332,7 @@ int RPLidar::pointZonePolar(float x, float y, float rho, float theta)
         return -1;
     };
 
-    if((rho <= m_cfg_dist_limits[0]) || (rho > m_cfg_dist_limits[2]))
+    if((rho <= m_cfg_dist_limits[0]) || (rho > detect_dist))
     {
         return -1;
     };
@@ -341,17 +344,13 @@ int RPLidar::pointZonePolar(float x, float y, float rho, float theta)
     if((theta>(M_PI/4)) && (theta<(3.0*M_PI/4))) quadrant = 1; // left
     if((theta>(-3.0*M_PI/4)) && (theta<(-M_PI/4))) quadrant = 3; // right
     
-    if(rho <= m_cfg_dist_limits[1])
-    {
-        return quadrant;
-    } else
-    {
-        return quadrant + 4;
-    };    
+    return quadrant;
 };
 
 int RPLidar::pointZone(float x, float y)
 {
+    float detect_dist = getEffectiveDetectionLimit(0.0);
+
     // exclude points outside
     if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
     {
@@ -365,7 +364,7 @@ int RPLidar::pointZone(float x, float y)
     
     float d = sqrtf(x_rel * x_rel + y_rel * y_rel);
    
-    if(d <= m_cfg_dist_limits[0] || d > m_cfg_dist_limits[2])
+    if(d <= m_cfg_dist_limits[0] || d > detect_dist)
     {
         return -1;
     };
@@ -379,19 +378,23 @@ int RPLidar::pointZone(float x, float y)
     if(c1 && !c2) quadrant = 1; // left
     if(!c1 && c2) quadrant = 3; // right
     
-    if(d <= m_cfg_dist_limits[1])
-    {
-        return quadrant;
-    } else
-    {
-        return quadrant + 4;
-    };    
+    return quadrant;
+};
+
+float RPLidar::getEffectiveDetectionLimit(float az)
+{
+    az = az; /* FIXME : TODO (azymuth dependent detection limit) */
+
+    float detect_dist = m_cfg_dist_limits[0] + (m_cfg_dist_limits[2]-m_cfg_dist_limits[0])*fabs(m_strat_speed_val)/1.0;
+
+    return detect_dist;
 };
 
 bool RPLidar::checkNearAdversary()
 {
     int counts[8] = {0,0,0,0,0,0,0,0};
     uint8_t detect[8];
+
     for(int i=0; i < m_count; i++)
     {
         /* FIXME : TODO : remove old code */
@@ -420,14 +423,6 @@ bool RPLidar::checkNearAdversary()
         adversary_detected = true;
       }
       if ((m_strat_speed_val < -0.05) && (detect[BACK_NEAR]>0))
-      {
-        adversary_detected = true;
-      }
-      if ((m_strat_speed_val > 0.5) && (detect[FRONT_FAR]>0))
-      {
-        adversary_detected = true;
-      }
-      if ((m_strat_speed_val < -0.5) && (detect[BACK_FAR]>0))
       {
         adversary_detected = true;
       }
