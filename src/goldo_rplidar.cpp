@@ -385,7 +385,7 @@ float RPLidar::getEffectiveDetectionLimit(float az)
 {
     az = az; /* FIXME : TODO (azymuth dependent detection limit) */
 
-    float detect_dist = m_cfg_dist_limits[0] + (m_cfg_dist_limits[2]-m_cfg_dist_limits[0])*fabs(m_strat_speed_val)/1.0;
+    float detect_dist = m_cfg_dist_limits[1] + (m_cfg_dist_limits[2]-m_cfg_dist_limits[1])*fabs(m_strat_speed_val)/1.0;
 
     return detect_dist;
 };
