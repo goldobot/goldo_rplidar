@@ -435,8 +435,14 @@ bool RPLidar::checkNearAdversary()
       if (adversary_detected)
       {
 #if 0 /* FIXME : DEBUG */
+        struct timespec my_tp;
+        unsigned int my_time_ms;
+
+        clock_gettime(1, &my_tp);
+        my_time_ms = my_tp.tv_sec*1000 + my_tp.tv_nsec/1000000;
+
         std::cout << "RPLidar: adversary detected\n";
-        std::cout << "  T="<<abs_time_ms<<"\n";
+        std::cout << "  T="<<my_time_ms<<"\n";
         std::cout << "  pose=<"<<m_pose_x<<","<<m_pose_y<<">\n";
         std::cout << "  m_strat_speed_val="<<m_strat_speed_val<<"\n";
         std::cout << "  counts :   F  L  B  R\n";
