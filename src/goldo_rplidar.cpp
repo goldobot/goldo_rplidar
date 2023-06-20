@@ -436,9 +436,13 @@ bool RPLidar::checkNearAdversary()
       {
 #if 0 /* FIXME : DEBUG */
         std::cout << "RPLidar: adversary detected\n";
-        std::cout << "  FN FF BN BF\n";
-        std::cout << "  "<<(int)detect[FRONT_NEAR]<< "  "<<(int)detect[FRONT_FAR]<<"  "<<(int)detect[BACK_NEAR]<<"  "<<(int)detect[BACK_FAR]<<"\n";
-        std::cout << "  T="<<abs_time_ms<<"  x="<<m_pose_x<<"\n";
+        std::cout << "  T="<<abs_time_ms<<"\n";
+        std::cout << "  pose=<"<<m_pose_x<<","<<m_pose_y<<">\n";
+        std::cout << "  m_strat_speed_val="<<m_strat_speed_val<<"\n";
+        std::cout << "  counts :   F  L  B  R\n";
+        std::cout << "           "<<(int)counts[FRONT_NEAR]<< "  "<<(int)counts[LEFT_NEAR]<<"  "<<(int)counts[BACK_NEAR]<<"  "<<(int)counts[RIGHT_NEAR]<<"\n";
+        std::cout << "  detect :   F  L  B  R\n";
+        std::cout << "           "<<(int)detect[FRONT_NEAR]<< "  "<<(int)detect[LEFT_NEAR]<<"  "<<(int)detect[BACK_NEAR]<<"  "<<(int)detect[RIGHT_NEAR]<<"\n";
 #endif
         goldo_gpio_set();
       }
