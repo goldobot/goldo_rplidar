@@ -323,11 +323,11 @@ int RPLidar::pointZonePolar(float x, float y, float rho, float theta)
     float detect_dist = getEffectiveDetectionLimit(0.0);
 
     // normalize theta
-    while (theta>M_PI) theta -= M_PI;
-    while (theta<=(-M_PI)) theta += M_PI;
+    while (theta>M_PI) theta -= 2.0*M_PI;
+    while (theta<=(-M_PI)) theta += 2.0*M_PI;
 
     // exclude points outside
-    if(x < 0.1f || x > 2.9f || y < -0.9f || y > 0.9f)
+    if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
     {
         return -1;
     };
