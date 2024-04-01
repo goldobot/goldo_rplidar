@@ -98,13 +98,6 @@ void goldo_gpio_set()
   {
     return;
   }
-  if (rp_shmem != NULL)
-  {
-    if (rp_shmem[0] == 0x00)
-    {
-      return;
-    }
-  }
   *(gpio_reg + GPSET0) = 0x200000;
 }
 
@@ -113,13 +106,6 @@ void goldo_gpio_clr()
   if (gpio_reg == MAP_FAILED)
   {
     return;
-  }
-  if (rp_shmem != NULL)
-  {
-    if (rp_shmem[0] == 0x00)
-    {
-      return;
-    }
   }
   *(gpio_reg + GPCLR0) = 0x200000;
 }

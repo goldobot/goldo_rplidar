@@ -60,6 +60,23 @@ struct PolPoint
     float theta;
 };
 
+typedef struct _robot_telemetry
+{
+  float pose_x;
+  float pose_y;
+  float pose_yaw;
+  float pose_speed;
+  float pose_yaw_rate;
+  float pose_acc;
+  float pose_angular_acc;
+  float left_encoder;
+  float right_encoder;
+  float left_pwm;
+  float right_pwm;
+  int state;
+  int error;
+} robot_telemetry_t;
+
 class RPLidar
 {
 public:
@@ -127,6 +144,8 @@ public:
     bool           m_strat_enable_flag{false};
     unsigned char  m_strat_curr_cmd{'u'};
     float          m_strat_speed_val{0.0};
+
+    robot_telemetry_t m_last_telemetry;
 };
 
 RPLidar::RPLidar() :
@@ -163,7 +182,9 @@ bool RPLidar::connectLidar(const std::string& port_name)
         res = m_rplidar_driver->getDeviceInfo(device_info);
         if(IS_OK(res))
         {            
-            std::cout << "model: " << (int)device_info.model << " serial: " << device_info.serialnum << "\n";
+            std::cout << "model: " << (int)device_info.model << " serial: ";
+            for (int i=0; i<16; i++) printf (" %.2x", device_info.serialnum[i]);
+            std::cout << "\n";
             auto firmware_version_major = device_info.firmware_version>>8;
             auto firmware_version_minor = device_info.firmware_version & 0xFF;
             std::cout << "hardware version: " << (int)device_info.hardware_version << "\n";
@@ -208,9 +229,9 @@ enum class MessageIdIn: uint8_t
     SetRobotPose,
     SetDistanceLimits,
     SetEnableAutotest,
-    SetEnableSendScan
+    SetEnableSendScan,
+    RobotTelemetry
 };
-    
 
 void RPLidar::checkSockets()
 {  
@@ -229,18 +250,27 @@ void RPLidar::checkSockets()
     switch(command)
     {
         case MessageIdIn::StartMotor:
+            std::cout << "MessageIdIn::StartMotor:\n";
             startMotor();
             zmq_recv(m_sub_socket, nullptr , 0, 0);
             break;
         case MessageIdIn::StopMotor:
+            std::cout << "MessageIdIn::StopMotor:\n";
             stopMotor();
             zmq_recv(m_sub_socket, nullptr , 0, 0);
             break;
         case MessageIdIn::SetThetaOffset:
             zmq_recv(m_sub_socket, &m_theta_offset , sizeof(m_theta_offset), 0);
+            std::cout << "MessageIdIn::SetThetaOffset:\n";
+            std::cout << "  m_theta_offset="<<m_theta_offset<<"\n";
             break;
         case MessageIdIn::SetRobotPose:
+            std::cout << "MessageIdIn::SetRobotPose:\n";
+#if 0 /* FIXME : TODO : obsolete; clean up */
             zmq_recv(m_sub_socket, &m_pose_x , 12, 0);
+#else
+            zmq_recv(m_sub_socket, nullptr , 0, 0);
+#endif
             break;
         case MessageIdIn::SetDistanceLimits:
             zmq_recv(m_sub_socket, &m_cfg_dist_limits , 12, 0);
@@ -252,12 +282,61 @@ void RPLidar::checkSockets()
         case MessageIdIn::SetEnableAutotest:
             zmq_recv(m_sub_socket, &val , 1, 0);
             m_enable_autotest = val> 0;
+            std::cout << "MessageIdIn::SetEnableAutotest:\n";
             std::cout << "set autotest enable: " << m_enable_autotest << "\n";
             break;
         case MessageIdIn::SetEnableSendScan:
             zmq_recv(m_sub_socket, &val , 1, 0);
             m_enable_send_scan = val> 0;
+            std::cout << "MessageIdIn::SetEnableSendScan:\n";
             std::cout << "set send scan enable: " << m_enable_send_scan << "\n";
+            break;
+        case MessageIdIn::RobotTelemetry:
+            zmq_recv(m_sub_socket, &m_last_telemetry, sizeof(m_last_telemetry), 0);
+            m_pose_x = m_last_telemetry.pose_x;
+            m_pose_y = m_last_telemetry.pose_y;
+            m_pose_yaw = m_last_telemetry.pose_yaw;
+            m_strat_speed_val = m_last_telemetry.pose_speed;
+
+#if 0 /* FIXME : DEBUG : brocker test */
+            std::cout << "MessageIdIn::RobotTelemetry:\n";
+            std::cout << "  m_pose_x            ="<<m_pose_x<<"\n";
+            std::cout << "  m_pose_y            ="<<m_pose_y<<"\n";
+            std::cout << "  m_pose_yaw          ="<<m_pose_yaw<<"\n";
+            std::cout << "  m_strat_speed_val   ="<<m_strat_speed_val<<"\n";
+            std::cout << "  pose_yaw_rate       ="<<m_last_telemetry.pose_yaw_rate<<"\n";
+            std::cout << "  pose_acc            ="<<m_last_telemetry.pose_acc<<"\n";
+            std::cout << "  pose_angular_acc    ="<<m_last_telemetry.pose_angular_acc<<"\n";
+            std::cout << "  left_encoder        ="<<m_last_telemetry.left_encoder<<"\n";
+            std::cout << "  right_encoder       ="<<m_last_telemetry.right_encoder<<"\n";
+            std::cout << "  left_pwm            ="<<m_last_telemetry.left_pwm<<"\n";
+            std::cout << "  right_pwm           ="<<m_last_telemetry.right_pwm<<"\n";
+            std::cout << "  state               ="<<m_last_telemetry.state<<"\n";
+            std::cout << "  error               ="<<m_last_telemetry.error<<"\n";
+
+            {
+                uint8_t test_detect[8] = {1,0,0,1,0,0,0,0};
+                uint8_t test_detect_type = 42;
+
+                uint8_t mask = 0x01;
+
+                for (int i=0; i<8; i++)
+                {
+                  //if ((m_last_telemetry.state&mask)!=0x00) test_detect[i] = 1;
+                  mask = mask<<1;
+                }
+                zmq_send(m_pub_socket, &test_detect_type, 1, ZMQ_SNDMORE );
+                zmq_send(m_pub_socket, &test_detect, 8, 0);
+            }
+
+            initAutotest();
+            m_autotest_obst.x_mm = m_last_telemetry.pose_x*1000.0;
+            m_autotest_obst.y_mm = m_last_telemetry.pose_y*1000.0;
+            m_autotest_obst.vx_mm_sec = m_strat_speed_val*1000.0/2;
+            m_autotest_obst.vy_mm_sec = m_strat_speed_val*1000.0/3;
+            sendAutotest();
+#endif
+
             break;
         default:
             zmq_recv(m_sub_socket, nullptr , 0, 0);
@@ -293,7 +372,6 @@ void RPLidar::checkLidar()
 
       m_strat_enable_flag = (rp_shmem[0]!=0x00)?true:false;
       m_strat_curr_cmd    = rp_shmem[1];
-      m_strat_speed_val   = *((float *)((unsigned char *)&rp_shmem[4]));
 # if 0 /* FIXME : DEBUG */
       if (fabs(speed_val)>0.000001) {
         printf ("TEST : rp_shmem = %x\n", rp_shmem);
@@ -414,8 +492,6 @@ bool RPLidar::checkNearAdversary()
 #if 1 /* FIXME : TODO : improve usage of the GPIO (direct obstacle signaling to the Nucleo)        */
       /*                temporary hack to improve reaction time after the detection of an obstacle */
     {
-      goldo_gpio_check_shmem();
-
       bool adversary_detected = false;
 
       if ((m_strat_speed_val > 0.05) && (detect[FRONT_NEAR]>0))
@@ -538,11 +614,6 @@ void RPLidar::sendAutotest()
 
   m_autotest_obst.timestamp_ms = my_thread_time_ms;
   m_autotest_obst.x_mm = m_autotest_obst.x_mm + delta_t_s*m_autotest_obst.vx_mm_sec;
-
-  if (m_autotest_obst.x_mm>1200.0)
-  {
-    m_autotest_obst.vx_mm_sec = 0.0;
-  }
 
   robot_detection_msg_t my_message;
   my_message.timestamp_ms   = m_autotest_obst.timestamp_ms;
