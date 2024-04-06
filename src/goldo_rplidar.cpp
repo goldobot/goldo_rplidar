@@ -555,10 +555,17 @@ void RPLidar::trackAdversaries()
     float y = m_points[i].y;
 
     /* FIXME : TODO : limites du terrain en variables de conf.. */
+# if 0 /* 2023 */
     if ((x >  0.10) && (x <  2.95) && 
         (y > -0.95) && (y <  0.95)) { /* si a l'interieur du terrain */
       LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
     }
+#else /* 2024 */
+    if ((x >  0.1) && (x <  1.9) && 
+        (y > -1.4) && (y <  1.4)) { /* si a l'interieur du terrain */
+      LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
+    }
+#endif
   }
   /* detection des clusters de plots representant potentiellement un adversaire */ 
   LidarDetect::instance().updateDetection();
