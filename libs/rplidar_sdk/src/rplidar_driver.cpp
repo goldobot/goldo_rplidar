@@ -1790,7 +1790,8 @@ u_result RPlidarDriverImplCommon::grabScanData(rplidar_response_measurement_node
 {
     DEPRECATED_WARN("grabScanData()", "grabScanDataHq()");
 
-    switch (_dataEvt.wait(timeout))
+    int my_evt = int(_dataEvt.wait(timeout));
+    switch (my_evt)
     {
     case rp::hal::Event::EVENT_TIMEOUT:
         count = 0;
@@ -1819,7 +1820,8 @@ u_result RPlidarDriverImplCommon::grabScanData(rplidar_response_measurement_node
 
 u_result RPlidarDriverImplCommon::grabScanDataHq(rplidar_response_measurement_node_hq_t * nodebuffer, size_t & count, _u32 timeout)
 {
-    switch (_dataEvt.wait(timeout))
+    int my_evt = int(_dataEvt.wait(timeout));
+    switch (my_evt)
     {
     case rp::hal::Event::EVENT_TIMEOUT:
         count = 0;

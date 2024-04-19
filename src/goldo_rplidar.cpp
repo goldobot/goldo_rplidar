@@ -645,6 +645,9 @@ void RPLidar::sendLidarTracks()
 {
   robot_detection_msg_t my_message;
 
+/* FIXME : TODO : manage the max number of obstacles */
+/*                Eurobot Be : quick hack : send only the best detection */
+#if 0 /* before 2024 : 3 obstacles */
   for (int i=0; i<3; i++)
   {
     detected_robot_info_t& detect = 
@@ -666,6 +669,28 @@ void RPLidar::sendLidarTracks()
       zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
     }
   }
+#else /* 2024 : send only the best detection */
+  {
+    detected_robot_info_t& detect = 
+      LidarDetect::instance().detected_robot(0);
+    if (detect.detect_quality>1)
+    {
+      my_message.timestamp_ms   = detect.timestamp_ms;
+      my_message.id             = detect.id;
+      my_message.x_mm_X4        = detect.x_mm * 4.0;
+      my_message.y_mm_X4        = detect.y_mm * 4.0;
+      my_message.vx_mm_sec      = detect.vx_mm_sec;
+      my_message.vy_mm_sec      = detect.vy_mm_sec;
+      my_message.ax_mm_sec_2    = detect.ax_mm_sec_2;
+      my_message.ay_mm_sec_2    = detect.ay_mm_sec_2;
+      my_message.detect_quality = detect.detect_quality;
+
+      uint8_t type = 2;
+      zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
+      zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
+    }
+  }
+#endif
 };
 
 
