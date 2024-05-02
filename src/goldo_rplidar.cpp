@@ -20,6 +20,18 @@ using namespace goldobot;
 
 extern char* rp_shmem;
 
+enum class MessageIdIn: uint8_t
+{
+  Unknown=0,
+  StartMotor,
+  StopMotor,
+  SetThetaOffset,
+  SetRobotPose,
+  SetDistanceLimits,
+  SetEnableAutotest,
+  SetEnableSendScan,
+  RobotTelemetry
+};
 
 // front near, front far, right near, right far, back near, back far, left near, left far
 #define FRONT_NEAR   0
@@ -33,31 +45,16 @@ extern char* rp_shmem;
 
 RPlidarDriver* g_driver = nullptr;
 
-/*
-bool startMotorCallback(goldo_rplidar::StartMotor::Request& request,
-                        goldo_rplidar::StartMotor::Response& response) {
-  g_driver->startMotor();
-  g_driver->startScan(0, 1);
-  return true;
-};
-
-bool stopMotorCallback(goldo_rplidar::StopMotor::Request& request,
-                       goldo_rplidar::StopMotor::Response& response) {
-  g_driver->stop();
-  g_driver->stopMotor();
-  return true;
-};*/
-
 struct Point
 {
-    float x;
-    float y;
+  float x;
+  float y;
 };
 
 struct PolPoint
 {
-    float rho;
-    float theta;
+  float rho;
+  float theta;
 };
 
 typedef struct _robot_telemetry
@@ -80,79 +77,73 @@ typedef struct _robot_telemetry
 class RPLidar
 {
 public:
-    RPLidar();
+  RPLidar();
     
-    bool connectLidar(const std::string& port_name);
+  bool connectLidar(const std::string& port_name);
     
-    void run();
-    
-    
-    float rhoCorrection(float rho);
-    
-    void startMotor();
-    void stopMotor();
-    
-    
-    void checkSockets();
-    void checkLidar();
-    int pointZone(float x, float y);
-    int pointZonePolar(float x, float y, float rho, float theta);
-    bool checkNearAdversary();
-    float getEffectiveDetectionLimit(float az);
-    void trackAdversaries();
-    
-    void sendScan();
-    
-    void initZmq();
+  void run();
 
-#if 1 /* FIXME : DEBUG : GOLDO */
-    detected_robot_info_t m_autotest_obst;
-    void initAutotest();
-    void sendAutotest();
-#endif
+  float rhoCorrection(float rho);
 
-    void sendLidarTracks();
-    
-    static constexpr float c_theta_factor {-3.141592653589793f * 0.5f / (1 << 14)};
-    static constexpr float c_rho_factor{(1e-3f / 4.0f)};
-    static constexpr int c_nb_points = 720;
-    
-    void* m_zmq_context;
-    void* m_pub_socket;
-    void* m_sub_socket;
-    
-    std::unique_ptr<RPlidarDriver> m_rplidar_driver;
-    rplidar_response_measurement_node_hq_t m_nodes[16384];
-    
-    float m_theta_offset{0};
-    
-    float m_pose_x{0};
-    float m_pose_y{0};
-    float m_pose_yaw{0};
-    
-    bool m_detect_zones[8]; // front near, front far, right near, right far, back near, back far, left near, left far
-    
-    size_t m_count{0};
-    Point m_points[c_nb_points];
-    PolPoint m_pol_points[c_nb_points];
-    
-    float m_cfg_dist_limits[3]{0.1f,0.3f,0.6f}; // too near (in robot), near, far
+  void startMotor();
+  void stopMotor();
 
-    bool m_enable_autotest{false};
-    bool m_enable_send_scan{false};
+  void checkSockets();
+  void checkLidar();
+  int pointZone(float x, float y);
+  int pointZonePolar(float x, float y, float rho, float theta);
+  bool checkNearAdversary();
+  float getEffectiveDetectionLimit(float az);
+  void trackAdversaries();
 
-    bool           m_strat_enable_flag{false};
-    unsigned char  m_strat_curr_cmd{'u'};
-    float          m_strat_speed_val{0.0};
+  void sendScan();
 
-    robot_telemetry_t m_last_telemetry;
+  void initZmq();
+
+  detected_robot_info_t m_autotest_obst;
+  void initAutotest();
+  void sendAutotest();
+
+  void sendLidarTracks();
+
+  static constexpr float c_theta_factor {-3.141592653589793f * 0.5f / (1 << 14)};
+  static constexpr float c_rho_factor{(1e-3f / 4.0f)};
+  static constexpr int c_nb_points = 720;
+
+  void* m_zmq_context;
+  void* m_pub_socket;
+  void* m_sub_socket;
+
+  std::unique_ptr<RPlidarDriver> m_rplidar_driver;
+  rplidar_response_measurement_node_hq_t m_nodes[16384];
+
+  float m_theta_offset{0};
+
+  float m_pose_x{0};
+  float m_pose_y{0};
+  float m_pose_yaw{0};
+
+  bool m_detect_zones[8]; // front near, front far, right near, right far, back near, back far, left near, left far
+
+  size_t m_count{0};
+  Point m_points[c_nb_points];
+  PolPoint m_pol_points[c_nb_points];
+
+  float m_cfg_dist_limits[3]{0.1f,0.3f,0.6f}; // too near (in robot), near, far
+
+  bool m_enable_autotest{false};
+  bool m_enable_send_scan{false};
+
+  bool           m_strat_enable_flag{false};
+  unsigned char  m_strat_curr_cmd{'u'};
+  float          m_strat_speed_val{0.0};
+
+  robot_telemetry_t m_last_telemetry;
 };
 
 RPLidar::RPLidar() :
   m_rplidar_driver(RPlidarDriver::CreateDriver(DRIVER_TYPE_SERIALPORT))
 {
-    
-    
 }
 
 void RPLidar::initZmq()
@@ -170,41 +161,42 @@ void RPLidar::initZmq()
 
 bool RPLidar::connectLidar(const std::string& port_name)
 {    
-    u_result  res = m_rplidar_driver->connect(port_name.c_str(), 115200);
-    if(!IS_OK(res))
-    {
-        std::cout << "failed to connect to rplidar\n";
-        return false;
+  u_result  res = m_rplidar_driver->connect(port_name.c_str(), 115200);
+  if(!IS_OK(res))
+  {
+    std::cout << "failed to connect to rplidar\n";
+    return false;
+  }
+  else
+  {
+    std::cout << "connected to rplidar\n";
+    rplidar_response_device_info_t device_info;
+    res = m_rplidar_driver->getDeviceInfo(device_info);
+    if(IS_OK(res))
+    {            
+      std::cout << "model: " << (int)device_info.model << " serial: ";
+      for (int i=0; i<16; i++) printf (" %.2x", device_info.serialnum[i]);
+      std::cout << "\n";
+      auto firmware_version_major = device_info.firmware_version>>8;
+      auto firmware_version_minor = device_info.firmware_version & 0xFF;
+      std::cout << "hardware version: " << (int)device_info.hardware_version << "\n";
+      std::cout << "firmware version: " << (int)firmware_version_major << "." << (int)firmware_version_minor << "\n";
     } else
     {
-        std::cout << "connected to rplidar\n";
-        rplidar_response_device_info_t device_info;
-        res = m_rplidar_driver->getDeviceInfo(device_info);
-        if(IS_OK(res))
-        {            
-            std::cout << "model: " << (int)device_info.model << " serial: ";
-            for (int i=0; i<16; i++) printf (" %.2x", device_info.serialnum[i]);
-            std::cout << "\n";
-            auto firmware_version_major = device_info.firmware_version>>8;
-            auto firmware_version_minor = device_info.firmware_version & 0xFF;
-            std::cout << "hardware version: " << (int)device_info.hardware_version << "\n";
-            std::cout << "firmware version: " << (int)firmware_version_major << "." << (int)firmware_version_minor << "\n";
-        } else
-        {
-            std::cout << "failed to get device info, error: " << res << "\n";
-            return false;
-        }        
-    };
-    return true;
+      std::cout << "failed to get device info, error: " << res << "\n";
+      return false;
+    }        
+  }
+  return true;
 };
 
 void RPLidar::run()
 {
-    while(true)
-    {
-        checkSockets();
-        checkLidar();
-    };
+  while(true)
+  {
+    checkSockets();
+    checkLidar();
+  }
 }
 
 void RPLidar::startMotor()
@@ -220,25 +212,12 @@ void RPLidar::stopMotor()
   m_rplidar_driver->stopMotor();
 };
 
-enum class MessageIdIn: uint8_t
-{
-    Unknown=0,
-    StartMotor,
-    StopMotor,
-    SetThetaOffset,
-    SetRobotPose,
-    SetDistanceLimits,
-    SetEnableAutotest,
-    SetEnableSendScan,
-    RobotTelemetry
-};
-
 void RPLidar::checkSockets()
 {  
   uint32_t events;
   int64_t more;
   size_t option_len;
-  
+
   option_len = sizeof(events);
   zmq_getsockopt(m_sub_socket, ZMQ_EVENTS, &events, &option_len);
 
@@ -249,97 +228,55 @@ void RPLidar::checkSockets()
     auto bytes_read = zmq_recv(m_sub_socket, (uint8_t*)&command , 1, 0);
     switch(command)
     {
-        case MessageIdIn::StartMotor:
-            std::cout << "MessageIdIn::StartMotor:\n";
-            startMotor();
-            zmq_recv(m_sub_socket, nullptr , 0, 0);
-            break;
-        case MessageIdIn::StopMotor:
-            std::cout << "MessageIdIn::StopMotor:\n";
-            stopMotor();
-            zmq_recv(m_sub_socket, nullptr , 0, 0);
-            break;
-        case MessageIdIn::SetThetaOffset:
-            zmq_recv(m_sub_socket, &m_theta_offset , sizeof(m_theta_offset), 0);
-            std::cout << "MessageIdIn::SetThetaOffset:\n";
-            std::cout << "  m_theta_offset="<<m_theta_offset<<"\n";
-            break;
-        case MessageIdIn::SetRobotPose:
-            std::cout << "MessageIdIn::SetRobotPose:\n";
-#if 0 /* FIXME : TODO : obsolete; clean up */
-            zmq_recv(m_sub_socket, &m_pose_x , 12, 0);
-#else
-            zmq_recv(m_sub_socket, nullptr , 0, 0);
-#endif
-            break;
-        case MessageIdIn::SetDistanceLimits:
-            zmq_recv(m_sub_socket, &m_cfg_dist_limits , 12, 0);
-            std::cout << "MessageIdIn::SetDistanceLimits:\n";
-            std::cout << "  m_cfg_dist_limits[0]="<<m_cfg_dist_limits[0]<<"\n";
-            std::cout << "  m_cfg_dist_limits[1]="<<m_cfg_dist_limits[1]<<"\n";
-            std::cout << "  m_cfg_dist_limits[2]="<<m_cfg_dist_limits[2]<<"\n";
-            break;
-        case MessageIdIn::SetEnableAutotest:
-            zmq_recv(m_sub_socket, &val , 1, 0);
-            m_enable_autotest = val> 0;
-            std::cout << "MessageIdIn::SetEnableAutotest:\n";
-            std::cout << "set autotest enable: " << m_enable_autotest << "\n";
-            break;
-        case MessageIdIn::SetEnableSendScan:
-            zmq_recv(m_sub_socket, &val , 1, 0);
-            m_enable_send_scan = val> 0;
-            std::cout << "MessageIdIn::SetEnableSendScan:\n";
-            std::cout << "set send scan enable: " << m_enable_send_scan << "\n";
-            break;
-        case MessageIdIn::RobotTelemetry:
-            zmq_recv(m_sub_socket, &m_last_telemetry, sizeof(m_last_telemetry), 0);
-            m_pose_x = m_last_telemetry.pose_x;
-            m_pose_y = m_last_telemetry.pose_y;
-            m_pose_yaw = m_last_telemetry.pose_yaw;
-            m_strat_speed_val = m_last_telemetry.pose_speed;
+    case MessageIdIn::StartMotor:
+      std::cout << "MessageIdIn::StartMotor:\n";
+      startMotor();
+      zmq_recv(m_sub_socket, nullptr , 0, 0);
+      break;
+    case MessageIdIn::StopMotor:
+      std::cout << "MessageIdIn::StopMotor:\n";
+      stopMotor();
+      zmq_recv(m_sub_socket, nullptr , 0, 0);
+      break;
+    case MessageIdIn::SetThetaOffset:
+      zmq_recv(m_sub_socket, &m_theta_offset , sizeof(m_theta_offset), 0);
+      std::cout << "MessageIdIn::SetThetaOffset:\n";
+      std::cout << "  m_theta_offset="<<m_theta_offset<<"\n";
+      break;
+    case MessageIdIn::SetRobotPose:
+      std::cout << "MessageIdIn::SetRobotPose:\n";
+      /* obsolete */
+      zmq_recv(m_sub_socket, nullptr , 0, 0);
+      break;
+    case MessageIdIn::SetDistanceLimits:
+      zmq_recv(m_sub_socket, &m_cfg_dist_limits , 12, 0);
+      std::cout << "MessageIdIn::SetDistanceLimits:\n";
+      std::cout << "  m_cfg_dist_limits[0]="<<m_cfg_dist_limits[0]<<"\n";
+      std::cout << "  m_cfg_dist_limits[1]="<<m_cfg_dist_limits[1]<<"\n";
+      std::cout << "  m_cfg_dist_limits[2]="<<m_cfg_dist_limits[2]<<"\n";
+      break;
+    case MessageIdIn::SetEnableAutotest:
+      zmq_recv(m_sub_socket, &val , 1, 0);
+      m_enable_autotest = val> 0;
+      std::cout << "MessageIdIn::SetEnableAutotest:\n";
+      std::cout << "set autotest enable: " << m_enable_autotest << "\n";
+      break;
+    case MessageIdIn::SetEnableSendScan:
+      zmq_recv(m_sub_socket, &val , 1, 0);
+      m_enable_send_scan = val> 0;
+      std::cout << "MessageIdIn::SetEnableSendScan:\n";
+      std::cout << "set send scan enable: " << m_enable_send_scan << "\n";
+      break;
+    case MessageIdIn::RobotTelemetry:
+      zmq_recv(m_sub_socket, &m_last_telemetry, sizeof(m_last_telemetry), 0);
+      m_pose_x = m_last_telemetry.pose_x;
+      m_pose_y = m_last_telemetry.pose_y;
+      m_pose_yaw = m_last_telemetry.pose_yaw;
+      m_strat_speed_val = m_last_telemetry.pose_speed;
 
-#if 0 /* FIXME : DEBUG : brocker test */
-            std::cout << "MessageIdIn::RobotTelemetry:\n";
-            std::cout << "  m_pose_x            ="<<m_pose_x<<"\n";
-            std::cout << "  m_pose_y            ="<<m_pose_y<<"\n";
-            std::cout << "  m_pose_yaw          ="<<m_pose_yaw<<"\n";
-            std::cout << "  m_strat_speed_val   ="<<m_strat_speed_val<<"\n";
-            std::cout << "  pose_yaw_rate       ="<<m_last_telemetry.pose_yaw_rate<<"\n";
-            std::cout << "  pose_acc            ="<<m_last_telemetry.pose_acc<<"\n";
-            std::cout << "  pose_angular_acc    ="<<m_last_telemetry.pose_angular_acc<<"\n";
-            std::cout << "  left_encoder        ="<<m_last_telemetry.left_encoder<<"\n";
-            std::cout << "  right_encoder       ="<<m_last_telemetry.right_encoder<<"\n";
-            std::cout << "  left_pwm            ="<<m_last_telemetry.left_pwm<<"\n";
-            std::cout << "  right_pwm           ="<<m_last_telemetry.right_pwm<<"\n";
-            std::cout << "  state               ="<<m_last_telemetry.state<<"\n";
-            std::cout << "  error               ="<<m_last_telemetry.error<<"\n";
-
-            {
-                uint8_t test_detect[8] = {1,0,0,1,0,0,0,0};
-                uint8_t test_detect_type = 42;
-
-                uint8_t mask = 0x01;
-
-                for (int i=0; i<8; i++)
-                {
-                  //if ((m_last_telemetry.state&mask)!=0x00) test_detect[i] = 1;
-                  mask = mask<<1;
-                }
-                zmq_send(m_pub_socket, &test_detect_type, 1, ZMQ_SNDMORE );
-                zmq_send(m_pub_socket, &test_detect, 8, 0);
-            }
-
-            initAutotest();
-            m_autotest_obst.x_mm = m_last_telemetry.pose_x*1000.0;
-            m_autotest_obst.y_mm = m_last_telemetry.pose_y*1000.0;
-            m_autotest_obst.vx_mm_sec = m_strat_speed_val*1000.0/2;
-            m_autotest_obst.vy_mm_sec = m_strat_speed_val*1000.0/3;
-            sendAutotest();
-#endif
-
-            break;
-        default:
-            zmq_recv(m_sub_socket, nullptr , 0, 0);
+      break;
+    default:
+      zmq_recv(m_sub_socket, nullptr , 0, 0);
     };
     option_len = sizeof(events);
     zmq_getsockopt(m_sub_socket, ZMQ_EVENTS, &events, &option_len);    
@@ -348,198 +285,171 @@ void RPLidar::checkSockets()
 
 void RPLidar::checkLidar()
 {
-    auto count = sizeof(m_nodes);
-    auto op_result = m_rplidar_driver->grabScanDataHq(m_nodes, count, 500);
-    if (IS_OK(op_result)) {
-      m_rplidar_driver->ascendScanData(m_nodes, count);
-      m_count = count;
-      int j = 0;
-      for (unsigned i = 0; i < count; i++) {
-        double theta = m_nodes[i].angle_z_q14 * c_theta_factor + m_theta_offset;
-        double rho = m_nodes[i].dist_mm_q2 * c_rho_factor;        
-       
-        if(rho >= 0.05)
-        {
-          m_points[j].x = rho * cosf(theta + m_pose_yaw) + m_pose_x;
-          m_points[j].y = rho * sinf(theta + m_pose_yaw) + m_pose_y;
-          m_pol_points[j].rho = rho;
-          m_pol_points[j].theta = theta;
-          j++;
-        }
-      }
+  auto count = sizeof(m_nodes);
+  auto op_result = m_rplidar_driver->grabScanDataHq(m_nodes, count, 500);
+  if (IS_OK(op_result)) {
+    m_rplidar_driver->ascendScanData(m_nodes, count);
+    m_count = count;
+    int j = 0;
+    for (unsigned i = 0; i < count; i++) {
+      double theta = m_nodes[i].angle_z_q14 * c_theta_factor + m_theta_offset;
+      double rho = m_nodes[i].dist_mm_q2 * c_rho_factor;        
 
-      //std::cout << "\n";
-
-      m_strat_enable_flag = (rp_shmem[0]!=0x00)?true:false;
-      m_strat_curr_cmd    = rp_shmem[1];
-# if 0 /* FIXME : DEBUG */
-      if (fabs(speed_val)>0.000001) {
-        printf ("TEST : rp_shmem = %x\n", rp_shmem);
-        printf ("       enable_flag = %x\n", m_strat_enable_flag);
-        printf ("       curr_cmd    = %c (%x)\n", m_strat_curr_cmd, m_strat_curr_cmd);
-        printf ("       speed_val   = %f\n", m_strat_speed_val);
-      }
-#endif
-
-      checkNearAdversary();
-      if(m_enable_send_scan)
+      if(rho >= 0.05)
       {
-        sendScan();
-      }
-      if(m_enable_autotest)
-      {
-        sendAutotest();
-      } else 
-      {    
-        trackAdversaries();
+        m_points[j].x = rho * cosf(theta + m_pose_yaw) + m_pose_x;
+        m_points[j].y = rho * sinf(theta + m_pose_yaw) + m_pose_y;
+        m_pol_points[j].rho = rho;
+        m_pol_points[j].theta = theta;
+        j++;
       }
     }
-};
+
+    m_strat_enable_flag = (rp_shmem[0]!=0x00)?true:false;
+    m_strat_curr_cmd    = rp_shmem[1];
+
+    checkNearAdversary();
+
+    if(m_enable_send_scan)
+    {
+      sendScan();
+    }
+
+    if(m_enable_autotest)
+    {
+      sendAutotest();
+    }
+    else 
+    {    
+      trackAdversaries();
+    }
+  }
+}
 
 int RPLidar::pointZonePolar(float x, float y, float rho, float theta)
 {
-    float detect_dist = getEffectiveDetectionLimit(0.0);
+  float detect_dist = getEffectiveDetectionLimit(0.0);
 
-    // normalize theta
-    while (theta>M_PI) theta -= 2.0*M_PI;
-    while (theta<=(-M_PI)) theta += 2.0*M_PI;
+  // normalize theta
+  while (theta>M_PI) theta -= 2.0*M_PI;
+  while (theta<=(-M_PI)) theta += 2.0*M_PI;
 
-    // exclude points outside
-    if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
-    {
-        return -1;
-    };
+  // exclude points outside
+  if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
+  {
+    return -1;
+  }
 
-    if((rho <= m_cfg_dist_limits[0]) || (rho > detect_dist))
-    {
-        return -1;
-    };
+  if((rho <= m_cfg_dist_limits[0]) || (rho > detect_dist))
+  {
+    return -1;
+  }
     
-    int quadrant=0;
+  int quadrant=0;
 
-    if((theta>=(-M_PI/4)) && (theta<=(M_PI/4))) quadrant = 0; // front
-    if((theta<=(-3.0*M_PI/4)) || (theta>=(3.0*M_PI/4))) quadrant = 2; // back
-    if((theta>(M_PI/4)) && (theta<(3.0*M_PI/4))) quadrant = 1; // left
-    if((theta>(-3.0*M_PI/4)) && (theta<(-M_PI/4))) quadrant = 3; // right
-    
-    return quadrant;
-};
+  if((theta>=(-M_PI/4)) && (theta<=(M_PI/4))) quadrant = 0; // front
+  if((theta<=(-3.0*M_PI/4)) || (theta>=(3.0*M_PI/4))) quadrant = 2; // back
+  if((theta>(M_PI/4)) && (theta<(3.0*M_PI/4))) quadrant = 1; // left
+  if((theta>(-3.0*M_PI/4)) && (theta<(-M_PI/4))) quadrant = 3; // right
+
+  return quadrant;
+}
 
 int RPLidar::pointZone(float x, float y)
 {
-    float detect_dist = getEffectiveDetectionLimit(0.0);
+  float detect_dist = getEffectiveDetectionLimit(0.0);
 
-    // exclude points outside
-    if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
-    {
-        return -1;
-    };
-    float dx = x - m_pose_x;
-    float dy = y - m_pose_y;
-    
-    float x_rel = dx * cos(m_pose_yaw) + dy * sin(m_pose_yaw);
-    float y_rel = -dx * sin(m_pose_yaw) + dy * cos(m_pose_yaw);
-    
-    float d = sqrtf(x_rel * x_rel + y_rel * y_rel);
-   
-    if(d <= m_cfg_dist_limits[0] || d > detect_dist)
-    {
-        return -1;
-    };
-    
-    int quadrant=0;
-    bool c1 = x_rel >= y_rel;
-    bool c2 = x_rel >= -y_rel;
-    
-    if(c1 && c2) quadrant = 0; // front
-    if(!c1 && !c2) quadrant = 2; // back
-    if(c1 && !c2) quadrant = 1; // left
-    if(!c1 && c2) quadrant = 3; // right
-    
-    return quadrant;
-};
+  // exclude points outside
+  if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
+  {
+    return -1;
+  }
+  float dx = x - m_pose_x;
+  float dy = y - m_pose_y;
+
+  float x_rel = dx * cos(m_pose_yaw) + dy * sin(m_pose_yaw);
+  float y_rel = -dx * sin(m_pose_yaw) + dy * cos(m_pose_yaw);
+
+  float d = sqrtf(x_rel * x_rel + y_rel * y_rel);
+
+  if(d <= m_cfg_dist_limits[0] || d > detect_dist)
+  {
+    return -1;
+  }
+
+  int quadrant=0;
+  bool c1 = x_rel >= y_rel;
+  bool c2 = x_rel >= -y_rel;
+
+  if(c1 && c2) quadrant = 0; // front
+  if(!c1 && !c2) quadrant = 2; // back
+  if(c1 && !c2) quadrant = 1; // left
+  if(!c1 && c2) quadrant = 3; // right
+
+  return quadrant;
+}
 
 float RPLidar::getEffectiveDetectionLimit(float az)
 {
-    az = az; /* FIXME : TODO (azymuth dependent detection limit) */
+  az = az; /* FIXME : TODO (azymuth dependent detection limit) */
 
-    float detect_dist = m_cfg_dist_limits[1] + (m_cfg_dist_limits[2]-m_cfg_dist_limits[1])*fabs(m_strat_speed_val)/1.0;
+  float detect_dist = m_cfg_dist_limits[1] + (m_cfg_dist_limits[2]-m_cfg_dist_limits[1])*fabs(m_strat_speed_val)/1.0;
 
-    return detect_dist;
-};
+  return detect_dist;
+}
 
 bool RPLidar::checkNearAdversary()
 {
-    int counts[8] = {0,0,0,0,0,0,0,0};
-    uint8_t detect[8];
+  int counts[8] = {0,0,0,0,0,0,0,0};
+  uint8_t detect[8];
 
-    for(int i=0; i < m_count; i++)
+  for(int i=0; i < m_count; i++)
+  {
+    auto z = pointZonePolar(m_points[i].x, m_points[i].y, m_pol_points[i].rho, m_pol_points[i].theta);
+    if(z >= 0)
     {
-        /* FIXME : TODO : remove old code */
-        //auto z = pointZone(m_points[i].x, m_points[i].y);
-        auto z = pointZonePolar(m_points[i].x, m_points[i].y, m_pol_points[i].rho, m_pol_points[i].theta);
-        if(z >= 0)
-        {
-            counts[z]++;
-        };
-    };
-
-    for(int i = 0; i < 8; i++)
-    {
-        detect[i] = counts[i] >= 6;
-    };
-        
-#if 1 /* FIXME : TODO : improve usage of the GPIO (direct obstacle signaling to the Nucleo)        */
-      /*                temporary hack to improve reaction time after the detection of an obstacle */
-    {
-      bool adversary_detected = false;
-
-      if ((m_strat_speed_val > 0.05) && (detect[FRONT_NEAR]>0))
-      {
-        adversary_detected = true;
-      }
-      if ((m_strat_speed_val < -0.05) && (detect[BACK_NEAR]>0))
-      {
-        adversary_detected = true;
-      }
-
-      if (!m_strat_enable_flag)
-      {
-        adversary_detected = false;
-      }
-
-      if (adversary_detected)
-      {
-#if 0 /* FIXME : DEBUG */
-        struct timespec my_tp;
-        unsigned int my_time_ms;
-
-        clock_gettime(1, &my_tp);
-        my_time_ms = my_tp.tv_sec*1000 + my_tp.tv_nsec/1000000;
-
-        std::cout << "RPLidar: adversary detected\n";
-        std::cout << "  T="<<my_time_ms<<"\n";
-        std::cout << "  pose=<"<<m_pose_x<<","<<m_pose_y<<">\n";
-        std::cout << "  m_strat_speed_val="<<m_strat_speed_val<<"\n";
-        std::cout << "  counts :   F  L  B  R\n";
-        std::cout << "           "<<(int)counts[FRONT_NEAR]<< "  "<<(int)counts[LEFT_NEAR]<<"  "<<(int)counts[BACK_NEAR]<<"  "<<(int)counts[RIGHT_NEAR]<<"\n";
-        std::cout << "  detect :   F  L  B  R\n";
-        std::cout << "           "<<(int)detect[FRONT_NEAR]<< "  "<<(int)detect[LEFT_NEAR]<<"  "<<(int)detect[BACK_NEAR]<<"  "<<(int)detect[RIGHT_NEAR]<<"\n";
-#endif
-        goldo_gpio_set();
-      }
-      else
-      {
-        //std::cout << "RPLidar: no obstacle\n";
-        goldo_gpio_clr();
-      }
+      counts[z]++;
     }
-#endif
+  }
 
-    uint8_t type = 42;
-    zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
-    zmq_send(m_pub_socket, &detect, 8, 0);
-    return true;
+  for(int i = 0; i < 8; i++)
+  {
+    detect[i] = counts[i] >= 6;
+  }
+
+  /* FIXME : TODO : improve usage of the GPIO (direct obstacle signaling to the Nucleo)        */
+  /*                temporary hack to improve reaction time after the detection of an obstacle */
+  {
+    bool adversary_detected = false;
+
+    if ((m_strat_speed_val > 0.05) && (detect[FRONT_NEAR]>0))
+    {
+      adversary_detected = true;
+    }
+    if ((m_strat_speed_val < -0.05) && (detect[BACK_NEAR]>0))
+    {
+      adversary_detected = true;
+    }
+
+    if (!m_strat_enable_flag)
+    {
+      adversary_detected = false;
+    }
+
+    if (adversary_detected)
+    {
+      goldo_gpio_set();
+    }
+    else
+    {
+      goldo_gpio_clr();
+    }
+  }
+
+  uint8_t type = 42;
+  zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
+  zmq_send(m_pub_socket, &detect, 8, 0);
+  return true;
 }
 
 void RPLidar::trackAdversaries()
@@ -547,8 +457,10 @@ void RPLidar::trackAdversaries()
   struct timespec my_tp;
   clock_gettime(1, &my_tp);
   int my_thread_time_ms = my_tp.tv_sec*1000 + my_tp.tv_nsec/1000000;
+
   /* reset des slots de detection du tracker d'adversaire */ 
   LidarDetect::instance().clearSlots();
+
   /* envoi des plots lidar au tracker d'adversaire (+filtrage geometrique) */ 
   for (unsigned i = 0; i < m_count; i++) {
     float x = m_points[i].x;
@@ -567,8 +479,10 @@ void RPLidar::trackAdversaries()
     }
 #endif
   }
+
   /* detection des clusters de plots representant potentiellement un adversaire */ 
   LidarDetect::instance().updateDetection();
+
   /* envoi des tracks lidar a goldo_main */ 
   sendLidarTracks();
 }
@@ -577,23 +491,21 @@ void RPLidar::sendScan()
 {
   uint32_t events;
   size_t option_len;
-  
+
   option_len = sizeof(events);
   zmq_getsockopt(m_pub_socket, ZMQ_EVENTS, &events, &option_len);
-  
+
   if(!(events & ZMQ_POLLOUT))
   {
-      return;
-  };
-  
+    return;
+  }
+
   uint8_t type = 1;
   zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
   zmq_send(m_pub_socket, &m_pose_x, 12, ZMQ_SNDMORE );
   zmq_send(m_pub_socket, m_points, 8 * m_count, 0);
-    
-};
+}
 
-#if 1 /* FIXME : DEBUG : GOLDO */
 void RPLidar::initAutotest()
 {
   struct timespec my_tp;
@@ -639,7 +551,6 @@ void RPLidar::sendAutotest()
 
   usleep(10000);
 };
-#endif
 
 void RPLidar::sendLidarTracks()
 {
@@ -696,18 +607,19 @@ void RPLidar::sendLidarTracks()
 
 RPLidar g_lidar;
 
-int main(int argc, char** argv) {
+int main(int argc, char** argv)
+{
   if(!g_lidar.connectLidar("/dev/goldorak/ttyLidar"))
   {
-      return -1;
+    return -1;
   }
   g_lidar.initZmq();
-#if 1 /* FIXME : DEBUG : GOLDO */
+
   g_lidar.initAutotest();
-#endif
 
   goldo_gpio_init();
 
   g_lidar.run();
+
   return 0;
 }
