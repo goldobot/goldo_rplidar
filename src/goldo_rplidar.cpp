@@ -482,6 +482,9 @@ void RPLidar::trackAdversaries()
   /* reset des slots de detection du tracker d'adversaire */ 
   LidarDetect::instance().clearSlots();
 
+  /* update tracker reference time */ 
+  LidarDetect::instance().updateTs(my_thread_time_ms);
+
   /* envoi des plots lidar au tracker d'adversaire (+filtrage geometrique) */ 
   for (unsigned i = 0; i < m_count; i++) {
     float x = m_points[i].x;
@@ -492,13 +495,13 @@ void RPLidar::trackAdversaries()
     if ((x >  0.10) && (x <  2.95) && 
         (y > -0.95) && (y <  0.95))
     { /* si a l'interieur du terrain */
-      LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
+      LidarDetect::instance().recordNewLidarSample(x*1000.0, y*1000.0);
     }
 #else /* 2024 */
     if ((x >  0.1) && (x <  1.9) && 
         (y > -1.4) && (y <  1.4))
     { /* si a l'interieur du terrain */
-      LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
+      LidarDetect::instance().recordNewLidarSample(x*1000.0, y*1000.0);
     }
 #endif
   }

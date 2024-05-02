@@ -157,9 +157,15 @@ bool LidarDetect::sampleInBeaconZone(double x_mm, double y_mm)
 }
 
 
-void LidarDetect::recordNewLidarSample(unsigned int ts_ms, double x_mm, double y_mm)
+void LidarDetect::updateTs(unsigned int ts_ms)
 {
   m_cur_ts_ms = ts_ms;
+}
+
+
+void LidarDetect::recordNewLidarSample(double x_mm, double y_mm)
+{
+  unsigned int ts_ms = m_cur_ts_ms;
 
   for (int i=0; i<MAX_NB_OF_CACHED_SAMPLES; i++)
   {

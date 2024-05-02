@@ -42,7 +42,9 @@ namespace goldobot
 
     bool sampleInBeaconZone(double x_mm, double y_mm);
 
-    void recordNewLidarSample(unsigned int ts_ms, double x_mm, double y_mm);
+    void updateTs(unsigned int ts_ms);
+
+    void recordNewLidarSample(double x_mm, double y_mm);
 
     void updateDetection();
 
