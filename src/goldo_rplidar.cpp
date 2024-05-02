@@ -33,6 +33,15 @@ enum class MessageIdIn: uint8_t
   RobotTelemetry
 };
 
+enum class MessageIdOut: uint8_t
+{
+  Unknown=0,
+  SendRawScan=1,
+  SendLidarTracks=2,
+  SendProximityDetections=42,
+  RaiseEmergency=64,
+};
+
 // front near, front far, right near, right far, back near, back far, left near, left far
 #define FRONT_NEAR   0
 #define LEFT_NEAR    1
@@ -96,7 +105,7 @@ public:
   float getEffectiveDetectionLimit(float az);
   void trackAdversaries();
 
-  void sendScan();
+  void sendRawScan();
 
   void initZmq();
 
@@ -139,6 +148,8 @@ public:
   float          m_strat_speed_val{0.0};
 
   robot_telemetry_t m_last_telemetry;
+
+  bool m_last_emergency_state{false};
 };
 
 RPLidar::RPLidar() :
@@ -157,7 +168,7 @@ void RPLidar::initZmq()
   zmq_bind(m_sub_socket, "tcp://*:3101");   
 
   zmq_setsockopt(m_sub_socket,ZMQ_SUBSCRIBE, "", 0); 
-};
+}
 
 bool RPLidar::connectLidar(const std::string& port_name)
 {    
@@ -181,14 +192,15 @@ bool RPLidar::connectLidar(const std::string& port_name)
       auto firmware_version_minor = device_info.firmware_version & 0xFF;
       std::cout << "hardware version: " << (int)device_info.hardware_version << "\n";
       std::cout << "firmware version: " << (int)firmware_version_major << "." << (int)firmware_version_minor << "\n";
-    } else
+    }
+    else
     {
       std::cout << "failed to get device info, error: " << res << "\n";
       return false;
     }        
   }
   return true;
-};
+}
 
 void RPLidar::run()
 {
@@ -210,7 +222,7 @@ void RPLidar::stopMotor()
 {
   m_rplidar_driver->stop();
   m_rplidar_driver->stopMotor();
-};
+}
 
 void RPLidar::checkSockets()
 {  
@@ -277,17 +289,18 @@ void RPLidar::checkSockets()
       break;
     default:
       zmq_recv(m_sub_socket, nullptr , 0, 0);
-    };
+    }
     option_len = sizeof(events);
     zmq_getsockopt(m_sub_socket, ZMQ_EVENTS, &events, &option_len);    
-  };        
-};
+  }
+}
 
 void RPLidar::checkLidar()
 {
   auto count = sizeof(m_nodes);
   auto op_result = m_rplidar_driver->grabScanDataHq(m_nodes, count, 500);
-  if (IS_OK(op_result)) {
+  if (IS_OK(op_result))
+  {
     m_rplidar_driver->ascendScanData(m_nodes, count);
     m_count = count;
     int j = 0;
@@ -312,7 +325,7 @@ void RPLidar::checkLidar()
 
     if(m_enable_send_scan)
     {
-      sendScan();
+      sendRawScan();
     }
 
     if(m_enable_autotest)
@@ -420,23 +433,23 @@ bool RPLidar::checkNearAdversary()
   /* FIXME : TODO : improve usage of the GPIO (direct obstacle signaling to the Nucleo)        */
   /*                temporary hack to improve reaction time after the detection of an obstacle */
   {
-    bool adversary_detected = false;
+    bool emergency_state = false;
 
     if ((m_strat_speed_val > 0.05) && (detect[FRONT_NEAR]>0))
     {
-      adversary_detected = true;
+      emergency_state = true;
     }
     if ((m_strat_speed_val < -0.05) && (detect[BACK_NEAR]>0))
     {
-      adversary_detected = true;
+      emergency_state = true;
     }
 
     if (!m_strat_enable_flag)
     {
-      adversary_detected = false;
+      emergency_state = false;
     }
 
-    if (adversary_detected)
+    if (emergency_state)
     {
       goldo_gpio_set();
     }
@@ -444,9 +457,17 @@ bool RPLidar::checkNearAdversary()
     {
       goldo_gpio_clr();
     }
+
+    if (emergency_state && !m_last_emergency_state)
+    {
+      uint8_t type = (uint8_t) MessageIdOut::RaiseEmergency;
+      zmq_send(m_pub_socket, &type, 1, 0);
+    }
+
+    m_last_emergency_state = emergency_state;
   }
 
-  uint8_t type = 42;
+  uint8_t type = (uint8_t) MessageIdOut::SendProximityDetections;
   zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
   zmq_send(m_pub_socket, &detect, 8, 0);
   return true;
@@ -469,12 +490,14 @@ void RPLidar::trackAdversaries()
     /* FIXME : TODO : limites du terrain en variables de conf.. */
 # if 0 /* 2023 */
     if ((x >  0.10) && (x <  2.95) && 
-        (y > -0.95) && (y <  0.95)) { /* si a l'interieur du terrain */
+        (y > -0.95) && (y <  0.95))
+    { /* si a l'interieur du terrain */
       LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
     }
 #else /* 2024 */
     if ((x >  0.1) && (x <  1.9) && 
-        (y > -1.4) && (y <  1.4)) { /* si a l'interieur du terrain */
+        (y > -1.4) && (y <  1.4))
+    { /* si a l'interieur du terrain */
       LidarDetect::instance().recordNewLidarSample(my_thread_time_ms, x*1000.0, y*1000.0);
     }
 #endif
@@ -487,7 +510,7 @@ void RPLidar::trackAdversaries()
   sendLidarTracks();
 }
 
-void RPLidar::sendScan()
+void RPLidar::sendRawScan()
 {
   uint32_t events;
   size_t option_len;
@@ -500,7 +523,7 @@ void RPLidar::sendScan()
     return;
   }
 
-  uint8_t type = 1;
+  uint8_t type = (uint8_t) MessageIdOut::SendRawScan;
   zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
   zmq_send(m_pub_socket, &m_pose_x, 12, ZMQ_SNDMORE );
   zmq_send(m_pub_socket, m_points, 8 * m_count, 0);
@@ -521,7 +544,7 @@ void RPLidar::initAutotest()
   m_autotest_obst.ax_mm_sec_2 = 0.0;
   m_autotest_obst.ay_mm_sec_2 = 0.0;
   m_autotest_obst.detect_quality = 20;
-};
+}
 
 void RPLidar::sendAutotest()
 {
@@ -545,12 +568,12 @@ void RPLidar::sendAutotest()
   my_message.ay_mm_sec_2    = m_autotest_obst.ay_mm_sec_2;
   my_message.detect_quality = m_autotest_obst.detect_quality;
 
-  uint8_t type = 2;
+  uint8_t type = (uint8_t) MessageIdOut::SendLidarTracks;
   zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
   zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
 
   usleep(10000);
-};
+}
 
 void RPLidar::sendLidarTracks()
 {
@@ -575,7 +598,7 @@ void RPLidar::sendLidarTracks()
       my_message.ay_mm_sec_2    = detect.ay_mm_sec_2;
       my_message.detect_quality = detect.detect_quality;
 
-      uint8_t type = 2;
+      uint8_t type = (uint8_t) MessageIdOut::SendLidarTracks;
       zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
       zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
     }
@@ -596,13 +619,13 @@ void RPLidar::sendLidarTracks()
       my_message.ay_mm_sec_2    = detect.ay_mm_sec_2;
       my_message.detect_quality = detect.detect_quality;
 
-      uint8_t type = 2;
+      uint8_t type = (uint8_t) MessageIdOut::SendLidarTracks;
       zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
       zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
     }
   }
 #endif
-};
+}
 
 
 RPLidar g_lidar;
@@ -613,6 +636,7 @@ int main(int argc, char** argv)
   {
     return -1;
   }
+
   g_lidar.initZmq();
 
   g_lidar.initAutotest();
