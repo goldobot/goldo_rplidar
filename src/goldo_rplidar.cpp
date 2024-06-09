@@ -13,6 +13,30 @@
 
 #include "goldo_gpio.hpp"
 
+/* FIXME : TODO : define configuration parameters for the position offset 
+                  of the rplidar when it is not aligned with the cinematic 
+                  center of the robot (middle of the encoder wheels interaxis).
+                  The values are relative to the proper coordinate system of
+                  the robot (the X axis is the direction of moving and 
+                  the Y axis the encoder wheels interaxis)                     */
+/*                CdR : quick hack : use hard coded parameters                 */
+
+#define X_RPLIDAR_OFFSET_REL   (0.02f)
+#define Y_RPLIDAR_OFFSET_REL   (0.00f)
+
+/* FIXME : TODO : limites du terrain en variables de conf.. */
+# if 0 /* 2023 */
+#define Y_BORDER_MAX           ( 0.95f)
+#define Y_BORDER_MIN           (-0.95f)
+#define X_BORDER_MAX           ( 2.95f)
+#define X_BORDER_MIN           ( 0.05f)
+#else
+#define Y_BORDER_MAX           ( 1.45f)
+#define Y_BORDER_MIN           (-1.45f)
+#define X_BORDER_MAX           ( 1.95f)
+#define X_BORDER_MIN           ( 0.05f)
+#endif
+
 using namespace rp::standalone::rplidar;
 #if 1 /* FIXME : DEBUG : GOLDO */
 using namespace goldobot;
@@ -116,7 +140,8 @@ public:
   void sendLidarTracks();
 
   static constexpr float c_theta_factor {-3.141592653589793f * 0.5f / (1 << 14)};
-  static constexpr float c_rho_factor{(1e-3f / 4.0f)};
+  //static constexpr float c_rho_factor{(1e-3f / 4.0f)};
+  static constexpr float c_rho_factor{(1.03e-3f / 4.0f)};
   static constexpr int c_nb_points = 720;
 
   void* m_zmq_context;
@@ -127,6 +152,8 @@ public:
   rplidar_response_measurement_node_hq_t m_nodes[16384];
 
   float m_theta_offset{0};
+  float m_x_offset_rel{0};
+  float m_y_offset_rel{0};
 
   float m_pose_x{0};
   float m_pose_y{0};
@@ -155,6 +182,8 @@ public:
 RPLidar::RPLidar() :
   m_rplidar_driver(RPlidarDriver::CreateDriver(DRIVER_TYPE_SERIALPORT))
 {
+  m_x_offset_rel = X_RPLIDAR_OFFSET_REL;
+  m_y_offset_rel = Y_RPLIDAR_OFFSET_REL;
 }
 
 void RPLidar::initZmq()
@@ -310,10 +339,18 @@ void RPLidar::checkLidar()
 
       if(rho >= 0.05)
       {
-        m_points[j].x = rho * cosf(theta + m_pose_yaw) + m_pose_x;
-        m_points[j].y = rho * sinf(theta + m_pose_yaw) + m_pose_y;
-        m_pol_points[j].rho = rho;
-        m_pol_points[j].theta = theta;
+        double x_rel = rho * cos(theta) + m_x_offset_rel;
+        double y_rel = rho * sin(theta) + m_y_offset_rel;
+
+        m_points[j].x = x_rel * cos(m_pose_yaw) - y_rel * sin(m_pose_yaw) + m_pose_x;
+        m_points[j].y = x_rel * sin(m_pose_yaw) + y_rel * cos(m_pose_yaw) + m_pose_y;
+
+        double rho_rel = sqrt(x_rel*x_rel + y_rel*y_rel);
+        double theta_rel = atan2(y_rel,x_rel);
+
+        m_pol_points[j].rho = rho_rel;
+        m_pol_points[j].theta = theta_rel;
+
         j++;
       }
     }
@@ -348,7 +385,7 @@ int RPLidar::pointZonePolar(float x, float y, float rho, float theta)
   while (theta<=(-M_PI)) theta += 2.0*M_PI;
 
   // exclude points outside
-  if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
+  if((x < X_BORDER_MIN) || (x > X_BORDER_MAX) || (y < Y_BORDER_MIN) || (y > Y_BORDER_MAX))
   {
     return -1;
   }
@@ -373,7 +410,7 @@ int RPLidar::pointZone(float x, float y)
   float detect_dist = getEffectiveDetectionLimit(0.0);
 
   // exclude points outside
-  if((x < 0.1f) || (x > 2.9f) || (y < -0.9f) || (y > 0.9f))
+  if((x < X_BORDER_MIN) || (x > X_BORDER_MAX) || (y < Y_BORDER_MIN) || (y > Y_BORDER_MAX))
   {
     return -1;
   }
@@ -491,19 +528,11 @@ void RPLidar::trackAdversaries()
     float y = m_points[i].y;
 
     /* FIXME : TODO : limites du terrain en variables de conf.. */
-# if 0 /* 2023 */
-    if ((x >  0.10) && (x <  2.95) && 
-        (y > -0.95) && (y <  0.95))
+    if ((x > X_BORDER_MIN) && (x < X_BORDER_MAX) && 
+        (y > Y_BORDER_MIN) && (y < Y_BORDER_MAX))
     { /* si a l'interieur du terrain */
       LidarDetect::instance().recordNewLidarSample(x*1000.0, y*1000.0);
     }
-#else /* 2024 */
-    if ((x >  0.1) && (x <  1.9) && 
-        (y > -1.4) && (y <  1.4))
-    { /* si a l'interieur du terrain */
-      LidarDetect::instance().recordNewLidarSample(x*1000.0, y*1000.0);
-    }
-#endif
   }
 
   /* detection des clusters de plots representant potentiellement un adversaire */ 
