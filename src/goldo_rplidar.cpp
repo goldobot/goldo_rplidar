@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <string.h>
 
 #include <cstddef>
 #include "rplidar.h"
@@ -674,6 +675,11 @@ int main(int argc, char** argv)
   g_lidar.initAutotest();
 
   goldo_gpio_init();
+
+  if ((argc>=2) && (strncmp(argv[1],"debug",5)==0))
+  {
+    g_lidar.m_enable_send_scan = true;
+  }
 
   g_lidar.run();
 
