@@ -57,7 +57,7 @@ int goldo_gpio_init()
     return -1;
   }
 
-  if ((fd_mmap = open("/home/goldorak/workspace/goldo_main/rplidar_shmem.txt", O_RDWR, 0)) == -1)
+  if ((fd_mmap = open("/home/goldorak/workspace/common/rplidar_shmem.txt", O_RDWR, 0)) == -1)
   {
     printf("unable to open 'rplidar_shmem.txt'\n");
     return 0;
