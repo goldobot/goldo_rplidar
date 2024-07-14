@@ -132,6 +132,8 @@ public:
 
   void sendRawScan();
 
+  void dumpRawScan();
+
   void initZmq();
 
   detected_robot_info_t m_autotest_obst;
@@ -368,7 +370,12 @@ void RPLidar::checkLidar()
 
     if(m_enable_autotest)
     {
+#if 0 /* FIXME : TODO : create a special message for scan dumping */
       sendAutotest();
+#else
+      dumpRawScan();
+      m_enable_autotest = false;
+#endif
     }
     else 
     {    
@@ -560,6 +567,25 @@ void RPLidar::sendRawScan()
   zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
   zmq_send(m_pub_socket, &m_pose_x, 12, ZMQ_SNDMORE );
   zmq_send(m_pub_socket, m_points, 8 * m_count, 0);
+}
+
+void RPLidar::dumpRawScan()
+{
+  printf("Dumping raw points in '/home/goldorak/workspace/common/rplidar_dump.txt'\n");
+
+  FILE *dump_s = fopen("/home/goldorak/workspace/common/rplidar_dump.txt", "w+");
+  if (dump_s == NULL)
+  {
+    printf("unable to open 'rplidar_dump.txt'\n");
+    return;
+  }
+
+  for (int i=0; i<m_count; i++)
+  {
+    fprintf (dump_s, " %1.3f, %1.3f\n", m_points[i].x, m_points[i].y);
+  }
+
+  fclose(dump_s);
 }
 
 void RPLidar::initAutotest()
