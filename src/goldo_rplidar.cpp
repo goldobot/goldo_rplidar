@@ -377,8 +377,6 @@ void RPLidar::checkLidar()
     {
 #if 0 /* FIXME : TODO : create a special message for scan dumping */
       sendAutotest();
-#else
-      dumpRawScan();
       m_enable_autotest = false;
 #endif
     }
@@ -386,6 +384,13 @@ void RPLidar::checkLidar()
     {    
       trackAdversaries();
     }
+  }
+
+  /* FIXME : TODO : create a special message for scan dumping */
+  if(m_enable_autotest)
+  {
+    dumpRawScan();
+    m_enable_autotest = false;
   }
 }
 
