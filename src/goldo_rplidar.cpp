@@ -334,8 +334,13 @@ void RPLidar::checkLidar()
   if (IS_OK(op_result))
   {
     m_rplidar_driver->ascendScanData(m_nodes, count);
-    m_count = count;
-    int j = 0;
+    for (unsigned i = 0; i < c_nb_points; i++) {
+      m_points[i].x = 0.0;
+      m_points[i].y = 0.0;
+      m_pol_points[i].rho = 0.0;
+      m_pol_points[i].theta = 0.0;
+    }
+    m_count = 0;
     for (unsigned i = 0; i < count; i++) {
       double theta = m_nodes[i].angle_z_q14 * c_theta_factor + m_theta_offset;
       double rho = m_nodes[i].dist_mm_q2 * c_rho_factor;        
@@ -345,16 +350,16 @@ void RPLidar::checkLidar()
         double x_rel = rho * cos(theta) + m_x_offset_rel;
         double y_rel = rho * sin(theta) + m_y_offset_rel;
 
-        m_points[j].x = x_rel * cos(m_pose_yaw) - y_rel * sin(m_pose_yaw) + m_pose_x;
-        m_points[j].y = x_rel * sin(m_pose_yaw) + y_rel * cos(m_pose_yaw) + m_pose_y;
+        m_points[m_count].x = x_rel * cos(m_pose_yaw) - y_rel * sin(m_pose_yaw) + m_pose_x;
+        m_points[m_count].y = x_rel * sin(m_pose_yaw) + y_rel * cos(m_pose_yaw) + m_pose_y;
 
         double rho_rel = sqrt(x_rel*x_rel + y_rel*y_rel);
         double theta_rel = atan2(y_rel,x_rel);
 
-        m_pol_points[j].rho = rho_rel;
-        m_pol_points[j].theta = theta_rel;
+        m_pol_points[m_count].rho = rho_rel;
+        m_pol_points[m_count].theta = theta_rel;
 
-        j++;
+        m_count++;
       }
     }
 
@@ -372,8 +377,6 @@ void RPLidar::checkLidar()
     {
 #if 0 /* FIXME : TODO : create a special message for scan dumping */
       sendAutotest();
-#else
-      dumpRawScan();
       m_enable_autotest = false;
 #endif
     }
@@ -381,6 +384,13 @@ void RPLidar::checkLidar()
     {    
       trackAdversaries();
     }
+  }
+
+  /* FIXME : TODO : create a special message for scan dumping */
+  if(m_enable_autotest)
+  {
+    dumpRawScan();
+    m_enable_autotest = false;
   }
 }
 
