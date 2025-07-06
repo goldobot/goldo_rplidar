@@ -180,6 +180,10 @@ public:
   robot_telemetry_t m_last_telemetry;
 
   bool m_last_emergency_state{false};
+
+  float m_debug_landmine_x{-1000000.0};
+  float m_debug_landmine_y{-1000000.0};
+  float m_debug_landmine_size{0.01};
 };
 
 RPLidar::RPLidar() :
@@ -499,6 +503,14 @@ bool RPLidar::checkNearAdversary()
       emergency_state = true;
     }
 
+#if 1 /* FIXME : DEBUG */
+    if ((fabs(m_strat_speed_val) > 0.05) && (fabs(m_debug_landmine_x-m_pose_x)<m_debug_landmine_size) && (fabs(m_debug_landmine_y-m_pose_y)<m_debug_landmine_size))
+    {
+      printf("DEBUG LANDMINE! (m_pose = (%f,%f))", m_pose_x, m_pose_y);
+      emergency_state = true;
+    }
+#endif
+
     if (!m_strat_enable_flag)
     {
       emergency_state = false;
@@ -715,6 +727,14 @@ int main(int argc, char** argv)
   if ((argc>=2) && (strncmp(argv[1],"debug",5)==0))
   {
     g_lidar.m_enable_send_scan = true;
+  }
+
+  if ((argc>=5) && (strncmp(argv[1],"landmine",8)==0))
+  {
+    g_lidar.m_debug_landmine_x = atof(argv[2]);
+    g_lidar.m_debug_landmine_y = atof(argv[3]);
+    g_lidar.m_debug_landmine_size = atof(argv[4]);
+    printf("Set debug landmine : (%f,%f) size=%f\n", g_lidar.m_debug_landmine_x, g_lidar.m_debug_landmine_y, g_lidar.m_debug_landmine_size);
   }
 
   g_lidar.run();
