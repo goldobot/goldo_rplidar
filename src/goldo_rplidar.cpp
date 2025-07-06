@@ -506,7 +506,7 @@ bool RPLidar::checkNearAdversary()
 #if 1 /* FIXME : DEBUG */
     if ((fabs(m_strat_speed_val) > 0.05) && (fabs(m_debug_landmine_x-m_pose_x)<m_debug_landmine_size) && (fabs(m_debug_landmine_y-m_pose_y)<m_debug_landmine_size))
     {
-      printf("DEBUG LANDMINE! (m_pose = (%f,%f))", m_pose_x, m_pose_y);
+      printf("DEBUG LANDMINE! (m_pose = (%f,%f))\n", m_pose_x, m_pose_y);
       emergency_state = true;
     }
 #endif
