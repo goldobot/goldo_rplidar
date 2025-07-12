@@ -39,9 +39,8 @@
 #endif
 
 using namespace rp::standalone::rplidar;
-#if 1 /* FIXME : DEBUG : GOLDO */
+
 using namespace goldobot;
-#endif
 
 extern char* rp_shmem;
 
@@ -124,6 +123,7 @@ public:
 
   void checkSockets();
   void checkLidar();
+  bool insidePlayground(float x, float y);
   int pointZone(float x, float y);
   int pointZonePolar(float x, float y, float rho, float theta);
   bool checkNearAdversary();
@@ -141,6 +141,9 @@ public:
   void sendAutotest();
 
   void sendLidarTracks();
+
+  bool detectLandmine();
+  bool detectPhantom();
 
   static constexpr float c_theta_factor {-3.141592653589793f * 0.5f / (1 << 14)};
   //static constexpr float c_rho_factor{(1e-3f / 4.0f)};
@@ -184,6 +187,9 @@ public:
   float m_debug_landmine_x{-1000000.0};
   float m_debug_landmine_y{-1000000.0};
   float m_debug_landmine_size{0.01};
+
+  float m_debug_phantom_x{-1000000.0};
+  float m_debug_phantom_y{-1000000.0};
 };
 
 RPLidar::RPLidar() :
@@ -407,7 +413,7 @@ int RPLidar::pointZonePolar(float x, float y, float rho, float theta)
   while (theta<=(-M_PI)) theta += 2.0*M_PI;
 
   // exclude points outside
-  if((x < X_BORDER_MIN) || (x > X_BORDER_MAX) || (y < Y_BORDER_MIN) || (y > Y_BORDER_MAX))
+  if(!insidePlayground(x,y))
   {
     return -1;
   }
@@ -432,7 +438,7 @@ int RPLidar::pointZone(float x, float y)
   float detect_dist = getEffectiveDetectionLimit(0.0);
 
   // exclude points outside
-  if((x < X_BORDER_MIN) || (x > X_BORDER_MAX) || (y < Y_BORDER_MIN) || (y > Y_BORDER_MAX))
+  if(!insidePlayground(x,y))
   {
     return -1;
   }
@@ -470,6 +476,54 @@ float RPLidar::getEffectiveDetectionLimit(float az)
   return detect_dist;
 }
 
+bool RPLidar::insidePlayground(float x, float y)
+{
+  if ((x > X_BORDER_MIN) && (x < X_BORDER_MAX) && (y > Y_BORDER_MIN) && (y < Y_BORDER_MAX))
+  {
+    return true;
+  }
+  return false;
+}
+
+bool RPLidar::detectLandmine()
+{
+  if (fabs(m_strat_speed_val) < 0.05) return false;
+  else return (fabs(m_debug_landmine_x-m_pose_x)<m_debug_landmine_size) && (fabs(m_debug_landmine_y-m_pose_y)<m_debug_landmine_size);
+}
+
+bool RPLidar::detectPhantom()
+{
+  uint8_t detect[8] = {0,0,0,0,0,0,0,0};
+
+  if (!insidePlayground(m_debug_phantom_x,m_debug_phantom_y)) return false;
+
+  double x_debug_phantom = m_debug_phantom_x - m_pose_x;
+  double y_debug_phantom = m_debug_phantom_y - m_pose_y;
+
+  double x_phantom_rel = x_debug_phantom * cos(m_pose_yaw) + y_debug_phantom * sin(m_pose_yaw);
+  double y_phantom_rel =-x_debug_phantom * sin(m_pose_yaw) + y_debug_phantom * cos(m_pose_yaw);
+
+  double rho_phantom_rel = sqrt(x_phantom_rel*x_phantom_rel + y_phantom_rel*y_phantom_rel);
+  double theta_phantom_rel = atan2(y_phantom_rel,x_phantom_rel);
+
+  auto z = pointZonePolar(m_debug_phantom_x, m_debug_phantom_y, rho_phantom_rel, theta_phantom_rel);
+  if(z >= 0)
+  {
+    detect[z] = 1;
+  }
+
+  if ((m_strat_speed_val > 0.05) && (detect[FRONT_NEAR]>0))
+  {
+    return true;
+  }
+  if ((m_strat_speed_val < -0.05) && (detect[BACK_NEAR]>0))
+  {
+    return true;
+  }
+
+  return false;
+}
+
 bool RPLidar::checkNearAdversary()
 {
   int counts[8] = {0,0,0,0,0,0,0,0};
@@ -503,13 +557,17 @@ bool RPLidar::checkNearAdversary()
       emergency_state = true;
     }
 
-#if 1 /* FIXME : DEBUG */
-    if ((fabs(m_strat_speed_val) > 0.05) && (fabs(m_debug_landmine_x-m_pose_x)<m_debug_landmine_size) && (fabs(m_debug_landmine_y-m_pose_y)<m_debug_landmine_size))
+    if (detectLandmine())
     {
       printf("DEBUG LANDMINE! (m_pose = (%f,%f))\n", m_pose_x, m_pose_y);
       emergency_state = true;
     }
-#endif
+
+    if (detect_phantom())
+    {
+      printf("DEBUG PHANTOM! (m_pose = (%f,%f))\n", m_pose_x, m_pose_y);
+      emergency_state = true;
+    }
 
     if (!m_strat_enable_flag)
     {
@@ -558,8 +616,7 @@ void RPLidar::trackAdversaries()
     float y = m_points[i].y;
 
     /* FIXME : TODO : limites du terrain en variables de conf.. */
-    if ((x > X_BORDER_MIN) && (x < X_BORDER_MAX) && 
-        (y > Y_BORDER_MIN) && (y < Y_BORDER_MAX))
+    if(insidePlayground(x,y))
     { /* si a l'interieur du terrain */
       LidarDetect::instance().recordNewLidarSample(x*1000.0, y*1000.0);
     }
@@ -686,23 +743,45 @@ void RPLidar::sendLidarTracks()
   }
 #else /* 2024 : send only the best detection */
   {
-    detected_robot_info_t& detect = 
-      LidarDetect::instance().detected_robot(0);
-    if (detect.detect_quality>1)
+    if (insidePlayground(m_debug_phantom_x,m_debug_phantom_y))
     {
-      my_message.timestamp_ms   = detect.timestamp_ms;
-      my_message.id             = detect.id;
-      my_message.x_mm_X4        = detect.x_mm * 4.0;
-      my_message.y_mm_X4        = detect.y_mm * 4.0;
-      my_message.vx_mm_sec      = detect.vx_mm_sec;
-      my_message.vy_mm_sec      = detect.vy_mm_sec;
-      my_message.ax_mm_sec_2    = detect.ax_mm_sec_2;
-      my_message.ay_mm_sec_2    = detect.ay_mm_sec_2;
-      my_message.detect_quality = detect.detect_quality;
+      /* The "Phantom" takes precedence.. */
+      struct timespec my_tp;
+      clock_gettime(1, &my_tp);
+      my_message.timestamp_ms   = my_tp.tv_sec*1000 + my_tp.tv_nsec/1000000;
+      my_message.id             = 0;
+      my_message.x_mm_X4        = m_debug_phantom_x * 4000.0;
+      my_message.y_mm_X4        = m_debug_phantom_y * 4000.0;
+      my_message.vx_mm_sec      = 0;
+      my_message.vy_mm_sec      = 0;
+      my_message.ax_mm_sec_2    = 0;
+      my_message.ay_mm_sec_2    = 0;
+      my_message.detect_quality = 100;
 
       uint8_t type = (uint8_t) MessageIdOut::SendLidarTracks;
       zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
       zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
+    }
+    else
+    {
+      detected_robot_info_t& detect = 
+        LidarDetect::instance().detected_robot(0);
+      if (detect.detect_quality>1)
+      {
+        my_message.timestamp_ms   = detect.timestamp_ms;
+        my_message.id             = detect.id;
+        my_message.x_mm_X4        = detect.x_mm * 4.0;
+        my_message.y_mm_X4        = detect.y_mm * 4.0;
+        my_message.vx_mm_sec      = detect.vx_mm_sec;
+        my_message.vy_mm_sec      = detect.vy_mm_sec;
+        my_message.ax_mm_sec_2    = detect.ax_mm_sec_2;
+        my_message.ay_mm_sec_2    = detect.ay_mm_sec_2;
+        my_message.detect_quality = detect.detect_quality;
+
+        uint8_t type = (uint8_t) MessageIdOut::SendLidarTracks;
+        zmq_send(m_pub_socket, &type, 1, ZMQ_SNDMORE );
+        zmq_send(m_pub_socket, &my_message, sizeof(my_message), 0);
+      }
     }
   }
 #endif
@@ -727,6 +806,13 @@ int main(int argc, char** argv)
   if ((argc>=2) && (strncmp(argv[1],"debug",5)==0))
   {
     g_lidar.m_enable_send_scan = true;
+  }
+
+  if ((argc>=4) && (strncmp(argv[1],"phantom",7)==0))
+  {
+    g_lidar.m_debug_phantom_x = atof(argv[2]);
+    g_lidar.m_debug_phantom_y = atof(argv[3]);
+    printf("Set debug phantom : (%f,%f) size=%f\n", g_lidar.m_debug_phantom_x, g_lidar.m_debug_phantom_y);
   }
 
   if ((argc>=5) && (strncmp(argv[1],"landmine",8)==0))
