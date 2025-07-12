@@ -563,7 +563,7 @@ bool RPLidar::checkNearAdversary()
       emergency_state = true;
     }
 
-    if (detect_phantom())
+    if (detectPhantom())
     {
       printf("DEBUG PHANTOM! (m_pose = (%f,%f))\n", m_pose_x, m_pose_y);
       emergency_state = true;
@@ -812,7 +812,7 @@ int main(int argc, char** argv)
   {
     g_lidar.m_debug_phantom_x = atof(argv[2]);
     g_lidar.m_debug_phantom_y = atof(argv[3]);
-    printf("Set debug phantom : (%f,%f) size=%f\n", g_lidar.m_debug_phantom_x, g_lidar.m_debug_phantom_y);
+    printf("Set debug phantom : (%f,%f)\n", g_lidar.m_debug_phantom_x, g_lidar.m_debug_phantom_y);
   }
 
   if ((argc>=5) && (strncmp(argv[1],"landmine",8)==0))
