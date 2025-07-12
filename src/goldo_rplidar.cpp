@@ -548,25 +548,30 @@ bool RPLidar::checkNearAdversary()
   {
     bool emergency_state = false;
 
-    if ((m_strat_speed_val > 0.05) && (detect[FRONT_NEAR]>0))
+    if (!insidePlayground(m_debug_phantom_x,m_debug_phantom_y))
     {
-      emergency_state = true;
-    }
-    if ((m_strat_speed_val < -0.05) && (detect[BACK_NEAR]>0))
-    {
-      emergency_state = true;
-    }
+      if ((m_strat_speed_val > 0.05) && (detect[FRONT_NEAR]>0))
+      {
+        emergency_state = true;
+      }
+      if ((m_strat_speed_val < -0.05) && (detect[BACK_NEAR]>0))
+      {
+        emergency_state = true;
+      }
 
-    if (detectLandmine())
-    {
-      printf("DEBUG LANDMINE! (m_pose = (%f,%f))\n", m_pose_x, m_pose_y);
-      emergency_state = true;
+      if (detectLandmine())
+      {
+        printf("DEBUG LANDMINE! (m_pose = (%f,%f))\n", m_pose_x, m_pose_y);
+        emergency_state = true;
+      }
     }
-
-    if (detectPhantom())
+    else
     {
-      printf("DEBUG PHANTOM! (m_pose = (%f,%f))\n", m_pose_x, m_pose_y);
-      emergency_state = true;
+      if (detectPhantom())
+      {
+        printf("DEBUG PHANTOM! (m_pose = (%f,%f))\n", m_pose_x, m_pose_y);
+        emergency_state = true;
+      }
     }
 
     if (!m_strat_enable_flag)
